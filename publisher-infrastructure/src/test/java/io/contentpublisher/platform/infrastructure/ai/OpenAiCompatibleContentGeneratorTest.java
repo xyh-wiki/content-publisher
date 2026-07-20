@@ -112,7 +112,8 @@ class OpenAiCompatibleContentGeneratorTest {
 
     @Test
     void shouldGenerateWebsiteRecommendationWithoutInventingClaims() throws Exception {
-        String markdown = "## 网站定位\n内容发布工具。## 核心功能\n多渠道发布。" + "公开页面功能说明。".repeat(30);
+        String markdown = "## 网站定位\n面向内容团队的内容发布工具。## 核心功能\n支持文章审核与多渠道发布。"
+                + "用户可以统一管理文章和发布记录。".repeat(20);
         OpenAiCompatibleContentGenerator generator = generator(aiEnvelope(markdown, List.of("内容发布")));
         WebsiteBrief brief = new WebsiteBrief("https://publisher.example.com", "面向开发者介绍功能",
                 "内容运营人员", List.of("内容发布"));
@@ -124,6 +125,24 @@ class OpenAiCompatibleContentGeneratorTest {
         var result = generator.generateFromWebsite("tenant-test", brief, snapshot, policy);
 
         assertThat(result.markdown()).contains("网站定位", "核心功能", "内容发布");
+    }
+
+    @Test
+    void shouldRejectWebsiteRecommendationContainingGenerationProcessNarration() throws Exception {
+        String markdown = "## 网站定位\n从已抓取的公开页面可以确认，这是一个内容发布工具。"
+                + "## 核心功能\n页面展示了文章审核与多渠道发布。" + "功能说明。".repeat(30);
+        OpenAiCompatibleContentGenerator generator = generator(aiEnvelope(markdown, List.of("内容发布")));
+        WebsiteBrief brief = new WebsiteBrief("https://publisher.example.com", "面向开发者介绍功能",
+                "内容运营人员", List.of("内容发布"));
+        WebsiteSnapshot snapshot = new WebsiteSnapshot(brief.websiteUrl(), "Publisher", "多渠道内容平台",
+                "支持文章生成、审核和多渠道发布。".repeat(20));
+        GenerationPolicy policy = new GenerationPolicy("zh-CN", "客观", 200, 2000, 5,
+                brief.keywords(), List.of(), List.of("网站定位", "核心功能"));
+
+        assertThatThrownBy(() -> generator.generateFromWebsite("tenant-test", brief, snapshot, policy))
+                .isInstanceOf(ApplicationException.class)
+                .isInstanceOfSatisfying(ApplicationException.class,
+                        exception -> assertThat(exception.code()).isEqualTo("AI_META_NARRATION_REJECTED"));
     }
 
     private OpenAiCompatibleContentGenerator generator(String response) throws Exception {
