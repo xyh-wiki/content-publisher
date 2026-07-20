@@ -212,6 +212,7 @@ public class OpenAiCompatibleContentGenerator implements ContentGenerator {
         source.put("keywords", brief.keywords());
         return "输出约束：\n" + objectMapper.writeValueAsString(constraints(policy))
                 + "\n生成克制、信息密度高的网站推荐文章。必须包含：网站定位、可验证的核心功能、适用人群、典型使用方式、优势、局限或注意事项、访问链接和总结。"
+                + "\n正文必须原样包含 website.url，并将其作为可点击的官方网站链接。"
                 + "\n只能依据抓取到的公开页面描述功能，不得虚构价格、用户量、性能、客户案例、排名或第三方评价。"
                 + "\n如果页面信息不足，必须明确说明，不得用常识补齐为确定事实。"
                 + "\n必须自然包含所有 requiredKeywords，完全避免 excludedKeywords；markdown 必须包含 requiredSections 对应的二级标题。"

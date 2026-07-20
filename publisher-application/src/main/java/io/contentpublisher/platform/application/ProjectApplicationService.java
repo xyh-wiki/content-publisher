@@ -115,10 +115,11 @@ public final class ProjectApplicationService {
         RepositorySnapshot snapshot = snapshots.findByProjectId(actor.tenantId(), projectId)
                 .orElseThrow(() -> new ApplicationException("SNAPSHOT_NOT_FOUND", "项目仓库快照不存在，请重新导入"));
         ContentGenerator.GeneratedContent generated = contentGenerator.generate(actor.tenantId(), snapshot, policy);
+        String markdown = ensureSourceLink(generated.markdown(), project.gitUrl(), "推荐地址", "项目仓库");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.git(projectId), generationJobId,
                 generated.title(), generated.summary(),
-                generated.markdown(), generated.tags(), generated.keywords(), policy.language(), snapshot.revision(),
+                markdown, generated.tags(), generated.keywords(), policy.language(), snapshot.revision(),
                 1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
         Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
                 article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
@@ -158,9 +159,10 @@ public final class ProjectApplicationService {
         WebsiteSnapshot snapshot = websiteInspector.inspect(brief.websiteUrl());
         ContentGenerator.GeneratedContent generated = contentGenerator.generateFromWebsite(
                 actor.tenantId(), brief, snapshot, policy);
+        String markdown = ensureSourceLink(generated.markdown(), snapshot.url(), "推荐网站", "官方网站");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.website(brief, snapshot),
-                generationJobId, generated.title(), generated.summary(), generated.markdown(), generated.tags(),
+                generationJobId, generated.title(), generated.summary(), markdown, generated.tags(),
                 generated.keywords(), policy.language(), websiteRevision(snapshot), 1, ArticleStatus.DRAFT,
                 actor.subject(), actor.subject(),
                 now, now);
@@ -188,6 +190,11 @@ public final class ProjectApplicationService {
             throw new IllegalArgumentException("列表查询数量必须在 1 到 100 之间");
         }
         return limit;
+    }
+
+    private String ensureSourceLink(String markdown, String sourceUrl, String heading, String label) {
+        if (markdown.contains(sourceUrl)) return markdown;
+        return markdown.stripTrailing() + "\n\n## " + heading + "\n\n" + label + "：<" + sourceUrl + ">";
     }
 
     private String topicRevision(TopicBrief brief) {
