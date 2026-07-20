@@ -14,7 +14,7 @@ public class ManualPublicationForm {
     private String title;
 
     @NotBlank(message = "平台发布内容不能为空")
-    @Size(max = 20000, message = "平台发布内容不能超过 20000 个字符")
+    @Size(max = 100000, message = "平台发布内容不能超过 100000 个字符")
     private String content;
 
     @NotBlank(message = "请填写发布后的文章链接")

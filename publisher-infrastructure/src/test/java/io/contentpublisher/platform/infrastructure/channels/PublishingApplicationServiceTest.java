@@ -131,6 +131,56 @@ class PublishingApplicationServiceTest {
     }
 
     @Test
+    void shouldAcceptOfficialRedNoteUrlForXiaohongshuChannel() {
+        Fixture fixture = fixture(ArticleStatus.APPROVED);
+        when(fixture.manualPublications.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ManualPublication result = fixture.service.completeManualPublication(ACTOR, fixture.article.id(),
+                ChannelType.XIAOHONGSHU, "RedNote title", "RedNote content", ContentFormat.PLAIN_TEXT,
+                "https://www.rednote.com/explore/example");
+
+        assertThat(result.externalUrl()).isEqualTo("https://www.rednote.com/explore/example");
+    }
+
+    @Test
+    void shouldAcceptOfficialXiaohongshuShortLink() {
+        Fixture fixture = fixture(ArticleStatus.APPROVED);
+
+        assertThat(fixture.service.validatePublishedUrl(ChannelType.XIAOHONGSHU,
+                "https://xhslink.com/a/example"))
+                .isEqualTo("https://xhslink.com/a/example");
+    }
+
+    @Test
+    void shouldRejectLookalikeRedNoteDomain() {
+        Fixture fixture = fixture(ArticleStatus.APPROVED);
+
+        assertThatThrownBy(() -> fixture.service.completeManualPublication(ACTOR, fixture.article.id(),
+                ChannelType.XIAOHONGSHU, "Title", "Content", ContentFormat.PLAIN_TEXT,
+                "https://rednote.com.evil.example/explore/example"))
+                .isInstanceOfSatisfying(ApplicationException.class,
+                        exception -> {
+                            assertThat(exception.code()).isEqualTo("PUBLISHED_URL_REJECTED");
+                            assertThat(exception.getMessage()).contains("rednote.com.evil.example")
+                                    .contains("xiaohongshu.com").contains("rednote.com");
+                        });
+    }
+
+    @Test
+    void shouldKeepManualContentBeyondAutomaticPlatformLimit() {
+        Fixture fixture = fixture(ArticleStatus.APPROVED);
+        when(fixture.manualPublications.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        String fullContent = "人工发布完整正文".repeat(180);
+
+        ManualPublication result = fixture.service.completeManualPublication(ACTOR, fixture.article.id(),
+                ChannelType.XIAOHONGSHU, "完整平台标题", fullContent, ContentFormat.PLAIN_TEXT,
+                "https://www.xiaohongshu.com/explore/example");
+
+        assertThat(fullContent.codePointCount(0, fullContent.length())).isGreaterThan(1_000);
+        assertThat(result.adaptedContent()).isEqualTo(fullContent);
+    }
+
+    @Test
     void shouldMergeApiAndManualPublicationRecordsInLatestFirstOrder() {
         Fixture fixture = fixture(ArticleStatus.PUBLISHED);
         Publication apiPublication = new Publication(UUID.randomUUID(), "tenant", fixture.article.id(),

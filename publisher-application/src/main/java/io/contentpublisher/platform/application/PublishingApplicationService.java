@@ -35,6 +35,8 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class PublishingApplicationService {
+    private static final int MANUAL_CONTENT_MAX_CHARACTERS = 100_000;
+
     private final ArticleRepository articles;
     private final ChannelAccountRepository accounts;
     private final PublicationRepository publications;
@@ -158,7 +160,7 @@ public final class PublishingApplicationService {
     public AdaptedContent adaptContent(ActorContext actor, UUID articleId, ChannelType channelType,
                                        String canonicalUrl) {
         Article article = getArticle(actor, articleId);
-        return contentAdapter.adapt(article, channelType, validateCanonicalUrl(canonicalUrl));
+        return contentAdapter.adaptForManual(article, channelType, validateCanonicalUrl(canonicalUrl));
     }
 
     public List<ManualPublication> getManualPublications(ActorContext actor, UUID articleId) {
@@ -221,7 +223,7 @@ public final class PublishingApplicationService {
             throw new ApplicationException("CONTENT_FORMAT_INVALID", "发布内容格式与渠道要求不一致");
         }
         String title = requireText(adaptedTitle, "平台标题不能为空", 500);
-        String content = requireText(adaptedContent, "平台发布内容不能为空", definition.characterLimit());
+        String content = requireText(adaptedContent, "平台发布内容不能为空", MANUAL_CONTENT_MAX_CHARACTERS);
         String verifiedExternalUrl = validatePublishedUrl(externalUrl, definition);
         Instant now = clock.instant();
         ManualPublication saved = manualPublications.save(new ManualPublication(UUID.randomUUID(), actor.tenantId(),
@@ -439,6 +441,10 @@ public final class PublishingApplicationService {
         }
     }
 
+    public String validatePublishedUrl(ChannelType channelType, String value) {
+        return validatePublishedUrl(value, ChannelCatalog.definition(channelType));
+    }
+
     private String validatePublishedUrl(String value, ChannelCatalog.ChannelDefinition definition) {
         String normalized = validateCanonicalUrl(requireText(value, "发布后的文章链接不能为空", 2048));
         java.net.URI uri = java.net.URI.create(normalized);
@@ -446,7 +452,9 @@ public final class PublishingApplicationService {
         boolean allowed = definition.publishedHosts().stream()
                 .anyMatch(domain -> host.equals(domain) || host.endsWith("." + domain));
         if (!allowed) {
-            throw new ApplicationException("PUBLISHED_URL_REJECTED", "发布结果链接与所选渠道域名不匹配");
+            throw new ApplicationException("PUBLISHED_URL_REJECTED",
+                    "发布结果域名 " + host + " 与所选渠道不匹配；允许域名："
+                            + String.join("、", definition.publishedHosts()));
         }
         return normalized;
     }

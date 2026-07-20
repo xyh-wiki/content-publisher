@@ -7,6 +7,19 @@
         body.classList.remove('sidebar-open');
     }));
 
+    document.querySelectorAll('form[data-confirm]').forEach(form => form.addEventListener('submit', event => {
+        if (!window.confirm(form.dataset.confirm || '确认执行此操作？')) event.preventDefault();
+    }));
+
+    document.querySelectorAll('[data-platform-launch]').forEach(link => link.addEventListener('click', event => {
+        event.preventDefault();
+        const platformWindow = window.open(link.href, link.dataset.platformWindow || link.target || 'publisher-platform');
+        if (platformWindow) {
+            try { platformWindow.opener = null; } catch (_error) { /* Cross-origin windows may deny access. */ }
+            platformWindow.focus();
+        }
+    }));
+
     const copy = async (value, button) => {
         try {
             await navigator.clipboard.writeText(value);
@@ -106,6 +119,52 @@
         source?.addEventListener('input', refresh);
         refresh();
     });
+
+    const publishedUrlInput = document.querySelector('#manual-external-url');
+    const publishedUrlButton = document.querySelector('[data-validate-published-url]');
+    const publishedUrlState = document.querySelector('[data-published-url-state]');
+    if (publishedUrlInput && publishedUrlButton && publishedUrlState) {
+        const initialHint = publishedUrlState.textContent;
+        const showState = (message, state) => {
+            publishedUrlState.textContent = message;
+            publishedUrlState.classList.toggle('valid', state === 'valid');
+            publishedUrlState.classList.toggle('invalid', state === 'invalid');
+        };
+        publishedUrlInput.addEventListener('input', () => {
+            publishedUrlInput.setCustomValidity('');
+            showState(initialHint, 'idle');
+        });
+        publishedUrlButton.addEventListener('click', async () => {
+            const value = publishedUrlInput.value.trim();
+            if (!value) {
+                publishedUrlInput.setCustomValidity('请先填写发布后的文章链接');
+                publishedUrlInput.reportValidity();
+                return;
+            }
+            publishedUrlButton.disabled = true;
+            showState('正在验证链接…', 'idle');
+            try {
+                const url = new URL(publishedUrlButton.dataset.validationUrl, window.location.origin);
+                url.searchParams.set('channelType', publishedUrlButton.dataset.channelType);
+                url.searchParams.set('url', value);
+                const response = await fetch(url, {
+                    credentials: 'same-origin', cache: 'no-store', headers: {'Accept': 'application/json'}
+                });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.message || '链接校验失败');
+                publishedUrlInput.value = result.normalizedUrl || value;
+                publishedUrlInput.setCustomValidity('');
+                showState(`链接有效 · ${new URL(publishedUrlInput.value).hostname}`, 'valid');
+            } catch (error) {
+                const message = error.message || '链接校验失败';
+                publishedUrlInput.setCustomValidity(message);
+                showState(message, 'invalid');
+                publishedUrlInput.reportValidity();
+            } finally {
+                publishedUrlButton.disabled = false;
+            }
+        });
+    }
 
     const jobLive = document.querySelector('[data-job-live]');
     if (jobLive?.dataset.jobActive === 'true') {

@@ -1,6 +1,8 @@
 package io.contentpublisher.platform.web.controller;
 
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.application.ChannelCatalog;
+import io.contentpublisher.platform.domain.ChannelType;
 import io.contentpublisher.platform.web.dto.PublicationRecordResponse;
 import io.contentpublisher.platform.web.dto.PublicationResponse;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
@@ -11,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -33,5 +36,12 @@ public class PublicationController {
     public List<PublicationRecordResponse> list(@RequestParam(defaultValue = "50") int limit) {
         return publishing.listPublicationRecords(actors.currentActor(), limit).stream()
                 .map(PublicationRecordResponse::from).toList();
+    }
+
+    @GetMapping("/link-validation")
+    public Map<String, Object> validateLink(@RequestParam ChannelType channelType, @RequestParam String url) {
+        String normalized = publishing.validatePublishedUrl(channelType, url);
+        return Map.of("valid", true, "normalizedUrl", normalized,
+                "allowedHosts", ChannelCatalog.definition(channelType).publishedHosts());
     }
 }

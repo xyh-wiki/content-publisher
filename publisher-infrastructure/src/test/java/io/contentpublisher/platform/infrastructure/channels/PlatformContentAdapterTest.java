@@ -37,6 +37,20 @@ class PlatformContentAdapterTest {
     }
 
     @Test
+    void shouldKeepFullTitleAndBodyForManualEditing() {
+        String title = "不会截断的平台标题".repeat(8);
+        String summary = "需要保留的正文内容".repeat(180);
+        Article source = article(title, summary, "Manual publishing title", "Manual publishing body");
+
+        var content = adapter.adaptForManual(source, ChannelType.XIAOHONGSHU, null);
+
+        assertThat(content.title()).isEqualTo(title);
+        assertThat(content.body()).contains(summary);
+        assertThat(content.body().codePointCount(0, content.body().length())).isGreaterThan(1_000);
+        assertThat(content.body()).doesNotEndWith("…");
+    }
+
+    @Test
     void shouldRespectTwitterUnicodeLimit() {
         Article source = article("技术平台".repeat(100), "能力摘要".repeat(100),
                 "Tech Platform ".repeat(100), "Capability summary ".repeat(100));

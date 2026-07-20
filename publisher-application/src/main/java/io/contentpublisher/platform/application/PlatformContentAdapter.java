@@ -11,6 +11,15 @@ import java.util.Locale;
 
 public final class PlatformContentAdapter {
     public AdaptedContent adapt(Article article, ChannelType channelType, String canonicalUrl) {
+        return adapt(article, channelType, canonicalUrl, true);
+    }
+
+    public AdaptedContent adaptForManual(Article article, ChannelType channelType, String canonicalUrl) {
+        return adapt(article, channelType, canonicalUrl, false);
+    }
+
+    private AdaptedContent adapt(Article article, ChannelType channelType, String canonicalUrl,
+                                 boolean enforcePlatformLimits) {
         ChannelCatalog.ChannelDefinition definition = ChannelCatalog.definition(channelType);
         Localized content = localize(article, definition.region());
         List<String> sourceTags = content.tags().isEmpty() ? content.keywords() : content.tags();
@@ -19,10 +28,13 @@ public final class PlatformContentAdapter {
         String body = switch (definition.contentFormat()) {
             case MARKDOWN -> markdown(content, channelType, canonicalUrl, definition.region());
             case PLAIN_TEXT -> plainText(content, channelType, canonicalUrl, tags, definition.region());
-            case SHORT_TEXT -> shortText(content, channelType, canonicalUrl, tags, definition.characterLimit());
+            case SHORT_TEXT -> shortText(content, channelType, canonicalUrl, tags,
+                    enforcePlatformLimits ? definition.characterLimit() : 0);
         };
-        return new AdaptedContent(channelType, definition.contentFormat(), adaptTitle(content.title(), channelType),
-                truncate(body, definition.characterLimit()), tags, definition.characterLimit());
+        String title = enforcePlatformLimits ? adaptTitle(content.title(), channelType) : content.title();
+        String adaptedBody = enforcePlatformLimits ? truncate(body, definition.characterLimit()) : body;
+        return new AdaptedContent(channelType, definition.contentFormat(), title, adaptedBody, tags,
+                definition.characterLimit());
     }
 
     private Localized localize(Article article, ChannelRegion region) {
@@ -78,6 +90,7 @@ public final class PlatformContentAdapter {
             tags.stream().limit(allowedTags).forEach(tag -> suffix.append('#').append(tag).append(' '));
         }
         String lead = content.title() + "\n\n" + content.summary();
+        if (limit < 1) return (lead + suffix).stripTrailing();
         int available = Math.max(20, limit - codePoints(suffix.toString()));
         return truncate(lead, available) + suffix.toString().stripTrailing();
     }
