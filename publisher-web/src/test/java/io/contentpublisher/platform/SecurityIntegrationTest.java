@@ -15,6 +15,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -54,6 +55,21 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void shouldValidateOfficialPublishedLinkForAuthenticatedUser() throws Exception {
+        mockMvc.perform(get("/api/v1/publications/link-validation")
+                        .param("channelType", "XIAOHONGSHU")
+                        .param("url", "https://www.rednote.com/explore/example")
+                        .with(jwt().jwt(token -> token.subject("editor")
+                                        .claim("tenant_id", "tenant-link-validation")
+                                        .claim("roles", List.of("EDITOR")))
+                                .authorities(new SimpleGrantedAuthority("ROLE_EDITOR"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(true))
+                .andExpect(jsonPath("$.normalizedUrl").value("https://www.rednote.com/explore/example"))
+                .andExpect(jsonPath("$.allowedHosts").isArray());
+    }
+
+    @Test
     void shouldDenyViewerFromImportingRepository() throws Exception {
         mockMvc.perform(post("/api/v1/projects/imports")
                         .contentType("application/json")
@@ -86,6 +102,22 @@ class SecurityIntegrationTest {
                                         .claim("tenant_id", "tenant-a")
                                         .claim("roles", List.of("VIEWER")))
                                 .authorities(new SimpleGrantedAuthority("ROLE_VIEWER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldAllowOnlyAdminToDeleteOrRestoreContentAndQueueRecords() throws Exception {
+        var editor = jwt().jwt(token -> token.subject("editor").claim("tenant_id", "tenant-delete-security")
+                        .claim("roles", List.of("EDITOR")))
+                .authorities(new SimpleGrantedAuthority("ROLE_EDITOR"));
+
+        mockMvc.perform(delete("/api/v1/articles/" + UUID.randomUUID()).with(editor))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/jobs/" + UUID.randomUUID()).with(editor))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/articles/" + UUID.randomUUID() + "/restore").with(editor))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/jobs/" + UUID.randomUUID() + "/restore").with(editor))
                 .andExpect(status().isForbidden());
     }
 

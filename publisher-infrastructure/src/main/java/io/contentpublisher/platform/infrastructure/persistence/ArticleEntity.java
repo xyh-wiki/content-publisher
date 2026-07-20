@@ -41,6 +41,8 @@ class ArticleEntity {
     @Column(name = "updated_by", nullable = false, length = 200) String updatedBy;
     @Column(name = "created_at", nullable = false) Instant createdAt;
     @Column(name = "updated_at", nullable = false) Instant updatedAt;
+    @Column(name = "deleted_at") Instant deletedAt;
+    @Column(name = "deleted_by", length = 200) String deletedBy;
 
     protected ArticleEntity() {}
 }

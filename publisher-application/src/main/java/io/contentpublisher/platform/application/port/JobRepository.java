@@ -1,6 +1,7 @@
 package io.contentpublisher.platform.application.port;
 
 import io.contentpublisher.platform.domain.Job;
+import io.contentpublisher.platform.application.DeletedRecord;
 
 import java.time.Instant;
 import java.util.List;
@@ -12,9 +13,15 @@ public interface JobRepository {
     Optional<Job> createIfWithinQuota(Job job, int maxActiveJobs);
     Optional<List<Job>> createBatchIfWithinQuota(List<Job> jobs, int maxActiveJobs);
     Optional<Job> findJobById(String tenantId, UUID jobId);
+    Optional<Job> findDeletedJobById(String tenantId, UUID jobId);
     Optional<Job> findByIdempotencyKey(String tenantId, String idempotencyKey);
     List<Job> findRecentJobs(String tenantId, int limit);
+    List<Job> findByArticleReference(String tenantId, UUID articleId);
+    List<Job> findDeletedByArticleReference(String tenantId, UUID articleId);
+    List<DeletedRecord> findDeletedJobs(String tenantId, int limit);
     long countActiveJobs(String tenantId);
+    boolean softDeleteJobRecord(String tenantId, UUID jobId, String subject, Instant deletedAt);
+    boolean restoreJobRecord(String tenantId, UUID jobId);
     Optional<Job> claimNext(String workerId, Instant now, Instant staleBefore);
     boolean updateProgress(UUID jobId, String workerId, int percent, String label, String detail, Instant now);
     boolean markSucceeded(UUID jobId, String workerId, UUID resultResourceId, Instant now);

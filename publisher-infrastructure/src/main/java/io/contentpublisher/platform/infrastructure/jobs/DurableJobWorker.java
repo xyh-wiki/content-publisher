@@ -30,7 +30,7 @@ public class DurableJobWorker {
     private static final Logger log = LoggerFactory.getLogger(DurableJobWorker.class);
     private static final Set<String> RETRYABLE_CODES = Set.of(
             "AI_REQUEST_FAILED", "AI_REQUEST_INTERRUPTED", "GIT_IMPORT_FAILED",
-            "WEBSITE_FETCH_FAILED", "WEBSITE_FETCH_INTERRUPTED");
+            "WEBSITE_FETCH_FAILED", "WEBSITE_FETCH_INTERRUPTED", "AI_META_NARRATION_REJECTED");
 
     private final JobRepository jobs;
     private final ProjectApplicationService projects;

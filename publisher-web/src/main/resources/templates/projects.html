@@ -6,11 +6,11 @@
     <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
 <body class="app-page"><div class="app-layout">
     <aside th:replace="~{fragments/app-shell :: sidebar('projects')}"></aside>
-    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('项目与内容', '从多种来源创建、管理并发布内容')}"></header>
+    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('内容工作台', '创建内容、管理记录并跟踪后台任务')}"></header>
         <main class="page-content projects-page">
-            <section class="page-header projects-page-header"><div><p class="section-kicker">内容工作区</p><h2>项目与内容</h2>
-                <p>在一个工作区中选择内容来源、发起生成任务，并持续跟踪项目、任务和文章状态。</p></div>
-                <div class="header-actions"><a class="secondary-link" th:href="@{/publishing}">查看发布进度</a></div></section>
+            <section class="page-header projects-page-header"><div><p class="section-kicker">内容工作区</p><h2>内容工作台</h2>
+                <p>创建入口与记录管理分区呈现，生成、审核、清理和发布路径更加直接。</p></div>
+                <div class="header-actions"><a class="secondary-link" th:if="${canAdmin}" href="#recycle-bin">回收站</a><a class="secondary-link" th:href="@{/publishing}">查看发布进度</a></div></section>
 
             <div class="workspace-metrics">
                 <div class="workspace-metric"><span class="workspace-metric-icon">◇</span><div><small>Git 项目</small><strong th:text="${projects.size()}">0</strong></div></div>
@@ -81,26 +81,45 @@
                 </div>
             </section>
 
-            <div class="projects-overview-grid">
-                <section class="card project-table-card"><div class="card-header"><div><p class="section-kicker">项目列表</p><h3>已接入 Git 项目</h3><p>查看仓库分析状态、默认分支和主要技术栈。</p></div><span class="count-badge" th:text="${projects.size()}">0</span></div>
-                    <div class="empty-state" th:if="${#lists.isEmpty(projects)}">还没有项目。通过上方“Git 项目”来源导入第一个仓库。</div>
-                    <div class="table-wrap" th:unless="${#lists.isEmpty(projects)}"><table><thead><tr><th>项目</th><th>状态</th><th>分支</th><th>技术栈</th><th>更新时间</th></tr></thead>
-                        <tbody><tr th:each="project : ${projects}"><td><a class="table-title" th:href="@{/projects/{id}(id=${project.id})}" th:text="${project.name}">project</a><small th:text="${project.gitUrl}">url</small></td>
-                            <td><span class="status-pill" th:classappend="| status-${project.status.name().toLowerCase()}|" th:text="${project.status}">READY</span></td>
-                            <td th:text="${project.defaultBranch ?: '-'}">main</td><td th:text="${#strings.listJoin(project.languages, ', ') ?: '-'}">Java</td><td th:text="${project.updatedAt}">time</td></tr></tbody></table></div>
+            <section class="records-workspace" aria-labelledby="records-heading">
+                <div class="section-heading"><div><p class="section-kicker">记录管理</p><h2 id="records-heading">内容、任务与项目</h2><p>生成结果和后台任务分区展示。管理员可清理不合理内容；运行中的任务会受到保护。</p></div>
+                    <a class="secondary-link" th:href="@{/publishing}">进入发布中心</a></div>
+
+                <section id="content-records" class="card record-card"><div class="card-header"><div><p class="section-kicker">内容记录</p><h3>已生成内容</h3><p>删除内容时会同时清理历史版本、发布记录和关联的终态任务。</p></div><span class="count-badge" th:text="${articles.size()}">0</span></div>
+                    <div class="empty-state" th:if="${#lists.isEmpty(articles)}">暂无内容记录。可从上方选择来源开始创建。</div>
+                    <div class="table-wrap" th:unless="${#lists.isEmpty(articles)}"><table class="management-table"><thead><tr><th>内容</th><th>来源</th><th>状态</th><th>版本 / 语言</th><th>更新时间</th><th class="table-actions-column">操作</th></tr></thead>
+                        <tbody><tr th:each="article : ${articles}"><td><a class="table-title" th:href="@{/articles/{id}(id=${article.id})}" th:text="${article.title}">标题</a><small class="line-clamp-1" th:text="${article.summary}">摘要</small></td>
+                            <td><span class="source-badge" th:text="${article.sourceType}">TOPIC</span></td><td><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></td>
+                            <td><strong th:text="|v${article.currentVersion}|">v1</strong><small th:text="${article.language}">zh-CN</small></td><td th:text="${article.updatedAt}">time</td>
+                            <td><div class="row-actions"><a class="quiet-button mini-button" th:href="@{/articles/{id}(id=${article.id})}">查看</a>
+                                <form th:if="${canAdmin}" th:action="@{/articles/{id}/delete(id=${article.id})}" method="post" data-confirm="将内容、发布记录和关联终态任务移入回收站，确认继续？"><button class="danger-link mini-button" type="submit">移入回收站</button></form></div></td></tr></tbody></table></div>
                 </section>
 
-                <aside class="overview-sidebar">
-                    <section class="card overview-card"><div class="card-header"><div><p class="section-kicker">任务列表</p><h3>近期任务</h3></div><span class="count-badge" th:text="${jobs.size()}">0</span></div>
-                        <div class="empty-state compact" th:if="${#lists.isEmpty(jobs)}">暂无任务。</div><div class="compact-list overview-scroll" th:unless="${#lists.isEmpty(jobs)}">
-                            <a class="compact-item" th:each="job : ${jobs}" th:href="@{/jobs/{id}(id=${job.id})}"><span><strong th:text="${job.type}">TYPE</strong><small th:text="${job.updatedAt}">time</small></span>
-                                <span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${job.status}">PENDING</span></a></div></section>
-                    <section class="card overview-card"><div class="card-header"><div><p class="section-kicker">内容列表</p><h3>最近文章</h3></div><a class="text-link" th:href="@{/publishing}">发布中心</a></div>
-                        <div class="empty-state compact" th:if="${#lists.isEmpty(articles)}">暂无文章。</div><div class="compact-list overview-scroll" th:unless="${#lists.isEmpty(articles)}">
-                            <a class="compact-item" th:each="article : ${articles}" th:href="@{/articles/{id}(id=${article.id})}"><span><strong th:text="${article.title}">标题</strong><small th:text="|v${article.currentVersion} · ${article.language}|">版本</small></span>
-                                <span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></a></div></section>
-                </aside>
-            </div>
+                <div class="records-grid">
+                    <section id="job-queue" class="card record-card"><div class="card-header"><div><p class="section-kicker">任务队列</p><h3>近期后台任务</h3><p>执行中任务不可删除；完成或失败任务可清理。</p></div><span class="count-badge" th:text="${jobs.size()}">0</span></div>
+                        <div class="empty-state compact" th:if="${#lists.isEmpty(jobs)}">暂无任务。</div><div class="record-list" th:unless="${#lists.isEmpty(jobs)}">
+                            <div class="record-row" th:each="job : ${jobs}"><a class="record-row-main" th:href="@{/jobs/{id}(id=${job.id})}"><span><strong th:text="${job.type}">TYPE</strong><small th:text="|${job.progressLabel} · ${job.updatedAt}|">time</small></span>
+                                <span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${job.status}">PENDING</span></a>
+                                <form th:if="${canAdmin and !job.status.isActive()}" th:action="@{/jobs/{id}/delete(id=${job.id})}" method="post" data-confirm="确认删除这条终态任务？若它生成了文章，将连同文章及关联记录一起删除。"><button class="icon-danger-button" type="submit" aria-label="删除任务" title="删除任务">×</button></form></div></div>
+                    </section>
+
+                    <section id="project-directory" class="card record-card"><div class="card-header"><div><p class="section-kicker">项目目录</p><h3>已接入 Git 项目</h3><p>按最近更新时间展示仓库状态与技术栈。</p></div><span class="count-badge" th:text="${projects.size()}">0</span></div>
+                        <div class="empty-state compact" th:if="${#lists.isEmpty(projects)}">还没有 Git 项目。</div><div class="record-list" th:unless="${#lists.isEmpty(projects)}">
+                            <a class="record-row record-row-main" th:each="project : ${projects}" th:href="@{/projects/{id}(id=${project.id})}"><span><strong th:text="${project.name}">project</strong><small th:text="${#strings.listJoin(project.languages, ', ') ?: project.gitUrl}">Java</small></span>
+                                <span><span class="status-pill" th:classappend="| status-${project.status.name().toLowerCase()}|" th:text="${project.status}">READY</span><small class="record-time" th:text="${project.updatedAt}">time</small></span></a></div>
+                    </section>
+                </div>
+
+                <section id="recycle-bin" class="card record-card recycle-bin" th:if="${canAdmin}"><div class="card-header"><div><p class="section-kicker">安全恢复</p><h3>回收站</h3><p>删除的内容、发布记录和任务仍保存在数据库中。恢复内容时会同步恢复关联记录。</p></div><span class="count-badge" th:text="${deletedArticles.size() + deletedJobs.size()}">0</span></div>
+                    <div class="empty-state" th:if="${#lists.isEmpty(deletedArticles) and #lists.isEmpty(deletedJobs)}">回收站为空。</div>
+                    <div class="recycle-grid" th:unless="${#lists.isEmpty(deletedArticles) and #lists.isEmpty(deletedJobs)}">
+                        <div><h4>已删除内容</h4><div class="record-list"><div class="record-row" th:each="item : ${deletedArticles}"><span class="record-row-main"><span><strong th:text="${item.title}">标题</strong><small th:text="|${item.deletedBy} · ${item.deletedAt}|">删除信息</small></span><span class="status-pill" th:text="${item.status}">DRAFT</span></span>
+                            <form th:action="@{/articles/{id}/restore(id=${item.id})}" method="post"><button class="secondary-button mini-button" type="submit">恢复</button></form></div><div class="empty-state compact" th:if="${#lists.isEmpty(deletedArticles)}">暂无已删除内容。</div></div></div>
+                        <div><h4>已删除任务</h4><div class="record-list"><div class="record-row" th:each="item : ${deletedJobs}"><span class="record-row-main"><span><strong th:text="${item.title}">任务</strong><small th:text="|${item.deletedBy} · ${item.deletedAt}|">删除信息</small></span><span class="status-pill" th:text="${item.status}">FAILED</span></span>
+                            <form th:action="@{/jobs/{id}/restore(id=${item.id})}" method="post"><button class="secondary-button mini-button" type="submit">恢复</button></form></div><div class="empty-state compact" th:if="${#lists.isEmpty(deletedJobs)}">暂无已删除任务。</div></div></div>
+                    </div>
+                </section>
+            </section>
         </main>
     </div>
 </div></body></html>

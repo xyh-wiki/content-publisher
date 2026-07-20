@@ -112,6 +112,36 @@ class TenantPersistenceIntegrationTest {
     }
 
     @Test
+    void shouldMoveArticleToRecycleBinAndRestoreItWithinTenant() {
+        Project project = project("tenant-delete", "https://github.com/contentpublisher/delete.git");
+        projects.save(project);
+        Instant now = Instant.parse("2026-07-20T00:00:00Z");
+        Article article = new Article(UUID.randomUUID(), "tenant-delete", ContentOrigin.git(project.id()), null,
+                "不合理内容", "摘要", "正文", List.of("delete"), "zh-CN", "abc123", 1,
+                ArticleStatus.DRAFT, "editor", "editor", now, now);
+        articles.saveWithVersion(article, new ArticleVersion("tenant-delete", article.id(), 1,
+                article.title(), article.summary(), article.markdown(), article.keywords(), "editor", now));
+
+        Instant deletedAt = now.plusSeconds(60);
+        assertThat(articles.softDeleteArticleRecord("other-tenant", article.id(), "admin", deletedAt)).isFalse();
+        assertThat(articles.softDeleteArticleRecord("tenant-delete", article.id(), "admin", deletedAt)).isTrue();
+
+        assertThat(articles.findArticleById("tenant-delete", article.id())).isEmpty();
+        assertThat(articles.findDeletedArticleById("tenant-delete", article.id())).isPresent();
+        assertThat(articles.findDeletedArticles("tenant-delete", 10)).singleElement().satisfies(deleted -> {
+            assertThat(deleted.id()).isEqualTo(article.id());
+            assertThat(deleted.deletedBy()).isEqualTo("admin");
+            assertThat(deleted.deletedAt()).isEqualTo(deletedAt);
+        });
+
+        assertThat(articles.restoreArticleRecord("other-tenant", article.id())).isFalse();
+        assertThat(articles.restoreArticleRecord("tenant-delete", article.id())).isTrue();
+        assertThat(articles.findArticleById("tenant-delete", article.id())).isPresent();
+        assertThat(articles.findDeletedArticleById("tenant-delete", article.id())).isEmpty();
+        assertThat(articles.findVersions("tenant-delete", article.id())).hasSize(1);
+    }
+
+    @Test
     void shouldAtomicallyRejectStaleChannelAccountVersion() {
         Instant now = Instant.parse("2026-07-20T00:00:00Z");
         ChannelAccount account = new ChannelAccount(UUID.randomUUID(), "tenant-account-version", ChannelType.DEV,

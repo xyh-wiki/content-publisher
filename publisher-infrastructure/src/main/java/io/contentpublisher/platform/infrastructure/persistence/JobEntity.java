@@ -38,6 +38,8 @@ class JobEntity {
     @Column(name = "error_message", length = 2000) String errorMessage;
     @Column(name = "created_at", nullable = false) Instant createdAt;
     @Column(name = "updated_at", nullable = false) Instant updatedAt;
+    @Column(name = "deleted_at") Instant deletedAt;
+    @Column(name = "deleted_by", length = 200) String deletedBy;
     @Version @Column(nullable = false) long version;
 
     protected JobEntity() {}

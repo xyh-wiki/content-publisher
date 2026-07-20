@@ -25,6 +25,8 @@ class ManualPublicationEntity {
     @Column(name = "external_url", nullable = false, length = 2048) String externalUrl;
     @Column(name = "published_by", nullable = false, length = 200) String publishedBy;
     @Column(name = "published_at", nullable = false) Instant publishedAt;
+    @Column(name = "deleted_at") Instant deletedAt;
+    @Column(name = "deleted_by", length = 200) String deletedBy;
 
     protected ManualPublicationEntity() {
     }

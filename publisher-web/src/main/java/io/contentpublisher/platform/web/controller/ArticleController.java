@@ -2,6 +2,7 @@ package io.contentpublisher.platform.web.controller;
 
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.application.RecordManagementApplicationService;
 import io.contentpublisher.platform.web.dto.ArticleResponse;
 import io.contentpublisher.platform.web.dto.JobResponse;
 import io.contentpublisher.platform.web.dto.PublishArticleRequest;
@@ -20,6 +21,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -36,12 +38,14 @@ import java.util.List;
 public class ArticleController {
     private final PublishingApplicationService publishing;
     private final JobApplicationService jobs;
+    private final RecordManagementApplicationService records;
     private final RequestActorProvider actors;
 
     public ArticleController(PublishingApplicationService publishing, JobApplicationService jobs,
-                             RequestActorProvider actors) {
+                             RecordManagementApplicationService records, RequestActorProvider actors) {
         this.publishing = publishing;
         this.jobs = jobs;
+        this.records = records;
         this.actors = actors;
     }
 
@@ -54,6 +58,18 @@ public class ArticleController {
     public List<ArticleVersionResponse> versions(@PathVariable UUID articleId) {
         return publishing.getArticleVersions(actors.currentActor(), articleId).stream()
                 .map(ArticleVersionResponse::from).toList();
+    }
+
+    @DeleteMapping("/{articleId}")
+    public ResponseEntity<Void> delete(@PathVariable UUID articleId) {
+        records.deleteArticleRecord(actors.currentActor(), articleId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{articleId}/restore")
+    public ResponseEntity<Void> restore(@PathVariable UUID articleId) {
+        records.restoreArticleRecord(actors.currentActor(), articleId);
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/{articleId}")

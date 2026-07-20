@@ -1,6 +1,7 @@
 package io.contentpublisher.platform.infrastructure.persistence;
 
 import io.contentpublisher.platform.application.ApplicationException;
+import io.contentpublisher.platform.application.DeletedRecord;
 import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.application.port.AiProviderSettingsRepository;
 import io.contentpublisher.platform.application.port.AuditRecorder;
@@ -155,26 +156,40 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     @Override
     @Transactional(readOnly = true)
     public Optional<Article> findArticleById(String tenantId, UUID id) {
-        return articles.findByTenantIdAndId(tenantId, id).map(this::toDomain);
+        return articles.findByTenantIdAndIdAndDeletedAtIsNull(tenantId, id).map(this::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Article> findDeletedArticleById(String tenantId, UUID id) {
+        return articles.findByTenantIdAndIdAndDeletedAtIsNotNull(tenantId, id).map(this::toDomain);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<Article> findByGenerationJobId(String tenantId, UUID generationJobId) {
-        return articles.findByTenantIdAndGenerationJobId(tenantId, generationJobId).map(this::toDomain);
+        return articles.findByTenantIdAndGenerationJobIdAndDeletedAtIsNull(tenantId, generationJobId)
+                .map(this::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Article> findDeletedByGenerationJobId(String tenantId, UUID generationJobId) {
+        return articles.findByTenantIdAndGenerationJobIdAndDeletedAtIsNotNull(tenantId, generationJobId)
+                .map(this::toDomain);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Article> findRecentArticles(String tenantId, int limit) {
-        return articles.findByTenantIdOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
+        return articles.findByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
                 .map(this::toDomain).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Article> findRecentByProjectId(String tenantId, UUID projectId, int limit) {
-        return articles.findByTenantIdAndProjectIdOrderByUpdatedAtDesc(
+        return articles.findByTenantIdAndProjectIdAndDeletedAtIsNullOrderByUpdatedAtDesc(
                 tenantId, projectId, PageRequest.of(0, limit)).stream().map(this::toDomain).toList();
     }
 
@@ -186,6 +201,48 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
                         entity.title, entity.summary, entity.markdown, read(entity.tagsJson), read(entity.keywordsJson),
                         entity.titleEn, entity.summaryEn, entity.markdownEn, read(entity.tagsEnJson), read(entity.keywordsEnJson),
                         entity.createdBy, entity.createdAt)).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DeletedRecord> findDeletedArticles(String tenantId, int limit) {
+        return articles.findByTenantIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(
+                        tenantId, PageRequest.of(0, limit)).stream()
+                .map(entity -> new DeletedRecord(entity.id, "ARTICLE", entity.title, entity.status,
+                        entity.deletedAt, entity.deletedBy)).toList();
+    }
+
+    @Override
+    public boolean softDeleteArticleRecord(String tenantId, UUID articleId, String subject,
+                                           java.time.Instant deletedAt) {
+        ArticleEntity article = articles.findByTenantIdAndIdAndDeletedAtIsNull(tenantId, articleId).orElse(null);
+        if (article == null) return false;
+        article.deletedAt = deletedAt; article.deletedBy = subject;
+        manualPublications.findAllByTenantIdAndArticleId(tenantId, articleId).forEach(entity -> {
+            entity.deletedAt = deletedAt; entity.deletedBy = subject;
+        });
+        publications.findAllByTenantIdAndArticleId(tenantId, articleId).forEach(entity -> {
+            entity.deletedAt = deletedAt; entity.deletedBy = subject;
+        });
+        manualPublications.flush(); publications.flush(); articles.save(article);
+        articles.flush();
+        return true;
+    }
+
+    @Override
+    public boolean restoreArticleRecord(String tenantId, UUID articleId) {
+        ArticleEntity article = articles.findByTenantIdAndIdAndDeletedAtIsNotNull(tenantId, articleId).orElse(null);
+        if (article == null) return false;
+        article.deletedAt = null; article.deletedBy = null;
+        manualPublications.findAllByTenantIdAndArticleId(tenantId, articleId).forEach(entity -> {
+            entity.deletedAt = null; entity.deletedBy = null;
+        });
+        publications.findAllByTenantIdAndArticleId(tenantId, articleId).forEach(entity -> {
+            entity.deletedAt = null; entity.deletedBy = null;
+        });
+        manualPublications.flush(); publications.flush(); articles.save(article);
+        articles.flush();
+        return true;
     }
 
     @Override
@@ -273,33 +330,34 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     @Override
     @Transactional(readOnly = true)
     public Optional<Publication> findPublicationById(String tenantId, UUID id) {
-        return publications.findByTenantIdAndId(tenantId, id).map(this::toDomain);
+        return publications.findByTenantIdAndIdAndDeletedAtIsNull(tenantId, id).map(this::toDomain);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Optional<Publication> findByPublicationJobId(String tenantId, UUID jobId) {
-        return publications.findByTenantIdAndPublicationJobId(tenantId, jobId).map(this::toDomain);
+        return publications.findByTenantIdAndPublicationJobIdAndDeletedAtIsNull(tenantId, jobId).map(this::toDomain);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Publication> findApiByArticle(String tenantId, UUID articleId) {
-        return publications.findByTenantIdAndArticleIdOrderByUpdatedAtDesc(tenantId, articleId).stream()
+        return publications.findByTenantIdAndArticleIdAndDeletedAtIsNullOrderByUpdatedAtDesc(tenantId, articleId).stream()
                 .map(this::toDomain).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Publication> findApiByArticles(String tenantId, List<UUID> articleIds) {
-        return publications.findByTenantIdAndArticleIdInOrderByUpdatedAtDesc(tenantId, articleIds).stream()
+        return publications.findByTenantIdAndArticleIdInAndDeletedAtIsNullOrderByUpdatedAtDesc(tenantId, articleIds).stream()
                 .map(this::toDomain).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<Publication> findRecentApi(String tenantId, int limit) {
-        return publications.findByTenantIdOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
+        return publications.findByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(
+                        tenantId, PageRequest.of(0, limit)).stream()
                 .map(this::toDomain).toList();
     }
 
@@ -317,21 +375,23 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     @Override
     @Transactional(readOnly = true)
     public List<ManualPublication> findByArticle(String tenantId, UUID articleId) {
-        return manualPublications.findByTenantIdAndArticleIdOrderByPublishedAtDesc(tenantId, articleId).stream()
+        return manualPublications.findByTenantIdAndArticleIdAndDeletedAtIsNullOrderByPublishedAtDesc(
+                        tenantId, articleId).stream()
                 .map(this::toDomain).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ManualPublication> findByArticles(String tenantId, List<UUID> articleIds) {
-        return manualPublications.findByTenantIdAndArticleIdInOrderByPublishedAtDesc(tenantId, articleIds).stream()
+        return manualPublications.findByTenantIdAndArticleIdInAndDeletedAtIsNullOrderByPublishedAtDesc(
+                        tenantId, articleIds).stream()
                 .map(this::toDomain).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ManualPublication> findRecent(String tenantId, int limit) {
-        return manualPublications.findByTenantIdOrderByPublishedAtDesc(tenantId,
+        return manualPublications.findByTenantIdAndDeletedAtIsNullOrderByPublishedAtDesc(tenantId,
                 org.springframework.data.domain.PageRequest.of(0, limit)).stream().map(this::toDomain).toList();
     }
 
@@ -429,7 +489,7 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     @Override
     @Transactional(isolation = Isolation.SERIALIZABLE)
     public Optional<Job> createIfWithinQuota(Job job, int maxActiveJobs) {
-        long active = jobs.countByTenantIdAndStatusIn(job.tenantId(),
+        long active = jobs.countByTenantIdAndDeletedAtIsNullAndStatusIn(job.tenantId(),
                 List.of(JobStatus.PENDING, JobStatus.RUNNING, JobStatus.RETRY_WAIT));
         return active >= maxActiveJobs ? Optional.empty() : Optional.of(save(job));
     }
@@ -442,7 +502,7 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         if (batch.stream().anyMatch(job -> !tenantId.equals(job.tenantId()))) {
             throw new IllegalArgumentException("批量任务必须属于同一租户");
         }
-        long active = jobs.countByTenantIdAndStatusIn(tenantId,
+        long active = jobs.countByTenantIdAndDeletedAtIsNullAndStatusIn(tenantId,
                 List.of(JobStatus.PENDING, JobStatus.RUNNING, JobStatus.RETRY_WAIT));
         if (active + batch.size() > maxActiveJobs) return Optional.empty();
         return Optional.of(batch.stream().map(this::save).toList());
@@ -451,7 +511,13 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     @Override
     @Transactional(readOnly = true)
     public Optional<Job> findJobById(String tenantId, UUID jobId) {
-        return jobs.findByTenantIdAndId(tenantId, jobId).map(this::toDomain);
+        return jobs.findByTenantIdAndIdAndDeletedAtIsNull(tenantId, jobId).map(this::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Job> findDeletedJobById(String tenantId, UUID jobId) {
+        return jobs.findByTenantIdAndIdAndDeletedAtIsNotNull(tenantId, jobId).map(this::toDomain);
     }
 
     @Override
@@ -463,15 +529,76 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     @Override
     @Transactional(readOnly = true)
     public List<Job> findRecentJobs(String tenantId, int limit) {
-        return jobs.findByTenantIdOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
+        return jobs.findByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(
+                        tenantId, PageRequest.of(0, limit)).stream()
                 .map(this::toDomain).toList();
     }
 
     @Override
     @Transactional(readOnly = true)
+    public List<Job> findByArticleReference(String tenantId, UUID articleId) {
+        return jobs.findAllByTenantIdAndDeletedAtIsNull(tenantId).stream().map(this::toDomain)
+                .filter(job -> articleId.equals(job.resultResourceId())
+                        || job.payload() instanceof JobPayload.PublishArticle publication
+                        && articleId.equals(publication.articleId()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Job> findDeletedByArticleReference(String tenantId, UUID articleId) {
+        return jobs.findAllByTenantIdAndDeletedAtIsNotNull(tenantId).stream().map(this::toDomain)
+                .filter(job -> articleId.equals(job.resultResourceId())
+                        || job.payload() instanceof JobPayload.PublishArticle publication
+                        && articleId.equals(publication.articleId()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DeletedRecord> findDeletedJobs(String tenantId, int limit) {
+        return jobs.findByTenantIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(
+                        tenantId, PageRequest.of(0, limit)).stream()
+                .map(entity -> new DeletedRecord(entity.id, "JOB", entity.type.name(), entity.status.name(),
+                        entity.deletedAt, entity.deletedBy)).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public long countActiveJobs(String tenantId) {
-        return jobs.countByTenantIdAndStatusIn(tenantId,
+        return jobs.countByTenantIdAndDeletedAtIsNullAndStatusIn(tenantId,
                 List.of(JobStatus.PENDING, JobStatus.RUNNING, JobStatus.RETRY_WAIT));
+    }
+
+    @Override
+    public boolean softDeleteJobRecord(String tenantId, UUID jobId, String subject,
+                                       java.time.Instant deletedAt) {
+        JobEntity job = jobs.findByTenantIdAndIdAndDeletedAtIsNull(tenantId, jobId).orElse(null);
+        if (job == null) return false;
+        publications.findByTenantIdAndPublicationJobId(tenantId, jobId).ifPresent(publication -> {
+            publication.deletedAt = deletedAt;
+            publication.deletedBy = subject;
+            publications.flush();
+        });
+        job.deletedAt = deletedAt; job.deletedBy = subject;
+        jobs.save(job);
+        jobs.flush();
+        return true;
+    }
+
+    @Override
+    public boolean restoreJobRecord(String tenantId, UUID jobId) {
+        JobEntity job = jobs.findByTenantIdAndIdAndDeletedAtIsNotNull(tenantId, jobId).orElse(null);
+        if (job == null) return false;
+        publications.findByTenantIdAndPublicationJobId(tenantId, jobId).ifPresent(publication -> {
+            publication.deletedAt = null;
+            publication.deletedBy = null;
+            publications.flush();
+        });
+        job.deletedAt = null; job.deletedBy = null;
+        jobs.save(job);
+        jobs.flush();
+        return true;
     }
 
     @Override

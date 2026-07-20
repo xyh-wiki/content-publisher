@@ -5,6 +5,7 @@ import io.contentpublisher.platform.application.AiSettingsApplicationService;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.application.RecordManagementApplicationService;
 import io.contentpublisher.platform.application.ChannelCatalog;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleStatus;
@@ -45,16 +46,19 @@ public class PortalManagementController {
     private final ProjectApplicationService projects;
     private final JobApplicationService jobs;
     private final PublishingApplicationService publishing;
+    private final RecordManagementApplicationService records;
     private final RequestActorProvider actors;
     private final AiProperties aiProperties;
     private final AiSettingsApplicationService aiSettings;
 
     public PortalManagementController(ProjectApplicationService projects, JobApplicationService jobs,
-                                      PublishingApplicationService publishing, RequestActorProvider actors,
+                                      PublishingApplicationService publishing,
+                                      RecordManagementApplicationService records, RequestActorProvider actors,
                                       AiProperties aiProperties, AiSettingsApplicationService aiSettings) {
         this.projects = projects;
         this.jobs = jobs;
         this.publishing = publishing;
+        this.records = records;
         this.actors = actors;
         this.aiProperties = aiProperties;
         this.aiSettings = aiSettings;
@@ -271,11 +275,57 @@ public class PortalManagementController {
         return "redirect:/articles/" + articleId;
     }
 
+    @PostMapping("/articles/{articleId}/delete")
+    public String deleteArticle(@PathVariable UUID articleId, RedirectAttributes redirectAttributes) {
+        try {
+            records.deleteArticleRecord(actors.currentActor(), articleId);
+            redirectAttributes.addFlashAttribute("success", "内容及关联记录已移入回收站，可由管理员恢复");
+        } catch (ApplicationException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/projects#content-records";
+    }
+
+    @PostMapping("/jobs/{jobId}/delete")
+    public String deleteJob(@PathVariable UUID jobId, RedirectAttributes redirectAttributes) {
+        try {
+            records.deleteJobRecord(actors.currentActor(), jobId);
+            redirectAttributes.addFlashAttribute("success", "任务已移入回收站，可由管理员恢复");
+        } catch (ApplicationException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/projects#job-queue";
+    }
+
+    @PostMapping("/articles/{articleId}/restore")
+    public String restoreArticle(@PathVariable UUID articleId, RedirectAttributes redirectAttributes) {
+        try {
+            records.restoreArticleRecord(actors.currentActor(), articleId);
+            redirectAttributes.addFlashAttribute("success", "内容及关联记录已恢复");
+        } catch (ApplicationException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/projects#recycle-bin";
+    }
+
+    @PostMapping("/jobs/{jobId}/restore")
+    public String restoreJob(@PathVariable UUID jobId, RedirectAttributes redirectAttributes) {
+        try {
+            records.restoreJobRecord(actors.currentActor(), jobId);
+            redirectAttributes.addFlashAttribute("success", "任务记录已恢复");
+        } catch (ApplicationException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/projects#recycle-bin";
+    }
+
     private void populateWorkspace(Model model) {
         var actor = actors.currentActor();
         model.addAttribute("projects", projects.listProjects(actor, LIST_LIMIT));
         model.addAttribute("jobs", jobs.listJobs(actor, 20));
         model.addAttribute("articles", projects.listArticles(actor, 20));
+        model.addAttribute("deletedArticles", records.listDeletedArticles(actor, 50));
+        model.addAttribute("deletedJobs", records.listDeletedJobs(actor, 50));
         model.addAttribute("aiEnabled", aiEnabled());
         model.addAttribute("aiModel", aiModel());
     }

@@ -116,6 +116,11 @@ public class SecurityConfiguration {
             AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry authorize) {
         authorize.requestMatchers("/settings/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/channels").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/articles/*/delete", "/jobs/*/delete").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/articles/*/restore", "/jobs/*/restore").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/articles/*", "/api/v1/jobs/*").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/articles/*/restore", "/api/v1/jobs/*/restore")
+                    .hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/channels", "/publishing")
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/publications",

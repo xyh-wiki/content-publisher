@@ -21,11 +21,15 @@ interface ProjectJpaRepository extends JpaRepository<ProjectEntity, UUID> {
 }
 
 interface ArticleJpaRepository extends JpaRepository<ArticleEntity, UUID> {
-    Optional<ArticleEntity> findByTenantIdAndId(String tenantId, UUID id);
-    Optional<ArticleEntity> findByTenantIdAndGenerationJobId(String tenantId, UUID generationJobId);
-    List<ArticleEntity> findByTenantIdOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
-    List<ArticleEntity> findByTenantIdAndProjectIdOrderByUpdatedAtDesc(String tenantId, UUID projectId,
-                                                                       Pageable pageable);
+    Optional<ArticleEntity> findByTenantIdAndIdAndDeletedAtIsNull(String tenantId, UUID id);
+    Optional<ArticleEntity> findByTenantIdAndIdAndDeletedAtIsNotNull(String tenantId, UUID id);
+    Optional<ArticleEntity> findByTenantIdAndGenerationJobIdAndDeletedAtIsNull(String tenantId, UUID generationJobId);
+    Optional<ArticleEntity> findByTenantIdAndGenerationJobIdAndDeletedAtIsNotNull(String tenantId, UUID generationJobId);
+    List<ArticleEntity> findByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
+    List<ArticleEntity> findByTenantIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String tenantId, Pageable pageable);
+    List<ArticleEntity> findByTenantIdAndProjectIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String tenantId,
+                                                                                          UUID projectId,
+                                                                                          Pageable pageable);
 }
 
 interface ArticleVersionJpaRepository extends JpaRepository<ArticleVersionEntity, ArticleVersionKey> {
@@ -73,31 +77,44 @@ interface ChannelAccountJpaRepository extends JpaRepository<ChannelAccountEntity
 }
 
 interface PublicationJpaRepository extends JpaRepository<PublicationEntity, UUID> {
-    Optional<PublicationEntity> findByTenantIdAndId(String tenantId, UUID id);
+    Optional<PublicationEntity> findByTenantIdAndIdAndDeletedAtIsNull(String tenantId, UUID id);
+    Optional<PublicationEntity> findByTenantIdAndPublicationJobIdAndDeletedAtIsNull(String tenantId,
+                                                                                     UUID publicationJobId);
+    List<PublicationEntity> findByTenantIdAndArticleIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String tenantId,
+                                                                                              UUID articleId);
+    List<PublicationEntity> findByTenantIdAndArticleIdInAndDeletedAtIsNullOrderByUpdatedAtDesc(String tenantId,
+                                                                                                List<UUID> articleIds);
+    List<PublicationEntity> findByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
+    List<PublicationEntity> findAllByTenantIdAndArticleId(String tenantId, UUID articleId);
     Optional<PublicationEntity> findByTenantIdAndPublicationJobId(String tenantId, UUID publicationJobId);
-    List<PublicationEntity> findByTenantIdAndArticleIdOrderByUpdatedAtDesc(String tenantId, UUID articleId);
-    List<PublicationEntity> findByTenantIdAndArticleIdInOrderByUpdatedAtDesc(String tenantId, List<UUID> articleIds);
-    List<PublicationEntity> findByTenantIdOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
 }
 
 interface ManualPublicationJpaRepository extends JpaRepository<ManualPublicationEntity, UUID> {
-    List<ManualPublicationEntity> findByTenantIdAndArticleIdOrderByPublishedAtDesc(String tenantId, UUID articleId);
-    List<ManualPublicationEntity> findByTenantIdAndArticleIdInOrderByPublishedAtDesc(String tenantId,
-                                                                                     List<UUID> articleIds);
-    List<ManualPublicationEntity> findByTenantIdOrderByPublishedAtDesc(String tenantId, Pageable pageable);
+    List<ManualPublicationEntity> findByTenantIdAndArticleIdAndDeletedAtIsNullOrderByPublishedAtDesc(String tenantId,
+                                                                                                      UUID articleId);
+    List<ManualPublicationEntity> findByTenantIdAndArticleIdInAndDeletedAtIsNullOrderByPublishedAtDesc(
+            String tenantId, List<UUID> articleIds);
+    List<ManualPublicationEntity> findByTenantIdAndDeletedAtIsNullOrderByPublishedAtDesc(String tenantId,
+                                                                                          Pageable pageable);
+    List<ManualPublicationEntity> findAllByTenantIdAndArticleId(String tenantId, UUID articleId);
 }
 
 interface JobJpaRepository extends JpaRepository<JobEntity, UUID> {
-    Optional<JobEntity> findByTenantIdAndId(String tenantId, UUID id);
+    Optional<JobEntity> findByTenantIdAndIdAndDeletedAtIsNull(String tenantId, UUID id);
+    Optional<JobEntity> findByTenantIdAndIdAndDeletedAtIsNotNull(String tenantId, UUID id);
     Optional<JobEntity> findByTenantIdAndIdempotencyKey(String tenantId, String idempotencyKey);
-    List<JobEntity> findByTenantIdOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
-    long countByTenantIdAndStatusIn(String tenantId, List<JobStatus> statuses);
+    List<JobEntity> findByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
+    List<JobEntity> findByTenantIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(String tenantId, Pageable pageable);
+    List<JobEntity> findAllByTenantIdAndDeletedAtIsNull(String tenantId);
+    List<JobEntity> findAllByTenantIdAndDeletedAtIsNotNull(String tenantId);
+    long countByTenantIdAndDeletedAtIsNullAndStatusIn(String tenantId, List<JobStatus> statuses);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             update JobEntity j set j.status = :failedStatus, j.errorCode = :errorCode,
                 j.errorMessage = :errorMessage, j.lockOwner = null, j.lockedAt = null, j.updatedAt = :now
-            where j.status = :runningStatus and j.lockedAt < :staleBefore and j.attempt >= j.maxAttempts
+            where j.deletedAt is null and j.status = :runningStatus
+                and j.lockedAt < :staleBefore and j.attempt >= j.maxAttempts
             """)
     int failExpiredExhaustedLeases(JobStatus runningStatus, JobStatus failedStatus,
                                    Instant staleBefore, Instant now, String errorCode, String errorMessage);
@@ -105,7 +122,7 @@ interface JobJpaRepository extends JpaRepository<JobEntity, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select j from JobEntity j
-            where j.attempt < j.maxAttempts and (
+            where j.deletedAt is null and j.attempt < j.maxAttempts and (
                 (j.status in :readyStatuses and j.scheduledAt <= :now)
                 or (j.status = :runningStatus and j.lockedAt < :staleBefore)
             )

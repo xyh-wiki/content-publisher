@@ -12,7 +12,8 @@
             <section class="page-header"><div><p class="section-kicker">文章主稿</p><h2 th:text="${article.title}">文章标题</h2>
                 <p th:text="|主稿 v${article.currentVersion} · ${article.language} · 源版本 ${article.sourceRevision}|">meta</p></div>
                 <div class="header-actions"><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span>
-                    <a class="secondary-link" th:if="${article.projectId != null}" th:href="@{/projects/{id}(id=${article.projectId})}">返回项目</a><a class="secondary-link" th:if="${article.projectId == null}" th:href="@{/projects}">返回创作中心</a></div></section>
+                    <a class="secondary-link" th:if="${article.projectId != null}" th:href="@{/projects/{id}(id=${article.projectId})}">返回项目</a><a class="secondary-link" th:if="${article.projectId == null}" th:href="@{/projects}">返回创作中心</a>
+                    <form th:if="${canAdmin}" class="inline-action-form" th:action="@{/articles/{id}/delete(id=${article.id})}" method="post" data-confirm="将文章版本、发布记录和关联终态任务一并移入回收站，确认继续？"><button class="danger-link" type="submit">移入回收站</button></form></div></section>
             <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
 
             <div class="content-aside-grid">

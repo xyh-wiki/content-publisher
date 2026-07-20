@@ -4,6 +4,7 @@ import io.contentpublisher.platform.application.AiSettingsApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.application.RecordManagementApplicationService;
 import io.contentpublisher.platform.application.PlatformContentAdapter;
 import io.contentpublisher.platform.application.MonitoringApplicationService;
 import io.contentpublisher.platform.application.port.ArticleRepository;
@@ -99,6 +100,14 @@ public class InfrastructureConfiguration {
                                                 AuditRecorder auditRecorder, Clock clock, JobProperties properties) {
         return new JobApplicationService(jobs, projects, publishing, auditRecorder, clock,
                 properties.maxActiveJobsPerTenant(), properties.maxAttempts());
+    }
+
+    @Bean
+    RecordManagementApplicationService recordManagementApplicationService(ArticleRepository articles,
+                                                                           JobRepository jobs,
+                                                                           AuditRecorder auditRecorder,
+                                                                           Clock clock) {
+        return new RecordManagementApplicationService(articles, jobs, auditRecorder, clock);
     }
 
     @Bean
