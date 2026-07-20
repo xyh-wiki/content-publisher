@@ -2,6 +2,8 @@ package io.contentpublisher.platform.infrastructure.channels;
 
 import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.application.PlatformContentAdapter;
+import io.contentpublisher.platform.application.PublicationMethod;
 import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
@@ -9,6 +11,7 @@ import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
 import io.contentpublisher.platform.application.port.ChannelPublisher;
 import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.application.port.PublicationRepository;
+import io.contentpublisher.platform.application.port.ManualPublicationRepository;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleStatus;
@@ -17,6 +20,8 @@ import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
 import io.contentpublisher.platform.domain.Publication;
 import io.contentpublisher.platform.domain.PublicationStatus;
+import io.contentpublisher.platform.domain.ContentFormat;
+import io.contentpublisher.platform.domain.ManualPublication;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -34,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 
 class PublishingApplicationServiceTest {
     private static final Instant NOW = Instant.parse("2026-07-20T00:00:00Z");
@@ -110,10 +116,49 @@ class PublishingApplicationServiceTest {
                         exception -> assertThat(exception.code()).isEqualTo("CHANNEL_ACCOUNT_VERSION_CONFLICT"));
     }
 
+    @Test
+    void shouldRecordManualPublicationSnapshotAndMarkArticlePublished() {
+        Fixture fixture = fixture(ArticleStatus.APPROVED);
+        when(fixture.manualPublications.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        ManualPublication result = fixture.service.completeManualPublication(ACTOR, fixture.article.id(),
+                ChannelType.XIAOHONGSHU, "小红书标题", "适配后的纯文本内容", ContentFormat.PLAIN_TEXT,
+                "https://www.xiaohongshu.com/explore/example");
+
+        assertThat(result.channelType()).isEqualTo(ChannelType.XIAOHONGSHU);
+        assertThat(result.adaptedContent()).isEqualTo("适配后的纯文本内容");
+        verify(fixture.articles).save(any());
+    }
+
+    @Test
+    void shouldMergeApiAndManualPublicationRecordsInLatestFirstOrder() {
+        Fixture fixture = fixture(ArticleStatus.PUBLISHED);
+        Publication apiPublication = new Publication(UUID.randomUUID(), "tenant", fixture.article.id(),
+                fixture.account.id(), UUID.randomUUID(), ChannelType.DEV, "https://example.com/article",
+                PublicationStatus.PUBLISHED, "dev-42", "https://dev.to/example/article", null, null,
+                NOW.minusSeconds(60), NOW.minusSeconds(120), NOW.minusSeconds(60));
+        ManualPublication manualPublication = new ManualPublication(UUID.randomUUID(), "tenant", fixture.article.id(),
+                ChannelType.XIAOHONGSHU, ContentFormat.PLAIN_TEXT, "标题", "正文",
+                "https://www.xiaohongshu.com/explore/example", "editor", NOW);
+        when(fixture.accounts.findAll("tenant")).thenReturn(List.of(fixture.account));
+        when(fixture.publications.findRecentApi("tenant", 20)).thenReturn(List.of(apiPublication));
+        when(fixture.manualPublications.findRecent("tenant", 20)).thenReturn(List.of(manualPublication));
+
+        var records = fixture.service.listPublicationRecords(ACTOR, 20);
+
+        assertThat(records).hasSize(2);
+        assertThat(records.get(0).method()).isEqualTo(PublicationMethod.MANUAL);
+        assertThat(records.get(0).publishedBy()).isEqualTo("editor");
+        assertThat(records.get(1).method()).isEqualTo(PublicationMethod.API);
+        assertThat(records.get(1).channelAccountName()).isEqualTo("DEV");
+        assertThat(records.get(1).contentFormat()).isEqualTo(ContentFormat.MARKDOWN);
+    }
+
     private Fixture fixture(ArticleStatus status) {
         ArticleRepository articles = mock(ArticleRepository.class);
         ChannelAccountRepository accounts = mock(ChannelAccountRepository.class);
         PublicationRepository publications = mock(PublicationRepository.class);
+        ManualPublicationRepository manualPublications = mock(ManualPublicationRepository.class);
         CredentialVault vault = mock(CredentialVault.class);
         ChannelEndpointPolicy endpointPolicy = mock(ChannelEndpointPolicy.class);
         ChannelPublisher publisher = mock(ChannelPublisher.class);
@@ -136,9 +181,10 @@ class PublishingApplicationServiceTest {
         when(publisher.channelType()).thenReturn(ChannelType.DEV);
         when(publisher.publish(any(), any(), any())).thenReturn(
                 new ChannelPublisher.PublishResult("42", "https://dev.to/example/article"));
-        var service = new PublishingApplicationService(articles, accounts, publications, vault, endpointPolicy,
-                List.of(publisher), audits, Clock.fixed(NOW, ZoneOffset.UTC));
-        return new Fixture(service, article, account, accounts);
+        var service = new PublishingApplicationService(articles, accounts, publications, manualPublications, vault,
+                endpointPolicy, List.of(publisher), audits, new PlatformContentAdapter(),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        return new Fixture(service, article, account, accounts, articles, publications, manualPublications);
     }
 
     private Article article(ArticleStatus status) {
@@ -154,5 +200,7 @@ class PublishingApplicationServiceTest {
     }
 
     private record Fixture(PublishingApplicationService service, Article article, ChannelAccount account,
-                           ChannelAccountRepository accounts) {}
+                           ChannelAccountRepository accounts, ArticleRepository articles,
+                           PublicationRepository publications,
+                           ManualPublicationRepository manualPublications) {}
 }

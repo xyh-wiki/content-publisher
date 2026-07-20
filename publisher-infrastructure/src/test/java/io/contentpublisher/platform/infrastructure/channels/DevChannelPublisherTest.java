@@ -8,6 +8,7 @@ import io.contentpublisher.platform.domain.ChannelAccount;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
 import io.contentpublisher.platform.infrastructure.config.ChannelProperties;
+import io.contentpublisher.platform.application.PlatformContentAdapter;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -51,8 +52,11 @@ class DevChannelPublisherTest {
         var publisher = new DevChannelPublisher(HttpClient.newHttpClient(), new ObjectMapper(),
                 new ChannelProperties(true, "unused", Set.of(), Duration.ofSeconds(5)));
 
+        Article article = article();
+        String canonicalUrl = "https://example.com/article";
         var result = publisher.publish(account(baseUrl), new io.contentpublisher.platform.application.port.ChannelPublisher.PublishContent(
-                article(), "https://example.com/article"), Map.of("apiKey", "dev-secret"));
+                article, new PlatformContentAdapter().adapt(article, ChannelType.DEV, canonicalUrl), canonicalUrl),
+                Map.of("apiKey", "dev-secret"));
 
         assertThat(result.externalId()).isEqualTo("42");
         assertThat(result.externalUrl()).isEqualTo("https://dev.to/example/article");

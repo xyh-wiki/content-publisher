@@ -11,6 +11,8 @@ import io.contentpublisher.platform.domain.ArticleVersion;
 import io.contentpublisher.platform.domain.ChannelAccount;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.ContentOrigin;
+import io.contentpublisher.platform.domain.TopicBrief;
 import io.contentpublisher.platform.domain.Project;
 import io.contentpublisher.platform.domain.ProjectStatus;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,26 @@ class TenantPersistenceIntegrationTest {
         assertThat(articles.findVersions("tenant-version", article.id()))
                 .extracting(ArticleVersion::versionNumber).containsExactly(1);
         assertThat(articles.findVersions("other-tenant", article.id())).isEmpty();
+    }
+
+    @Test
+    void shouldPersistTopicArticleWithoutGitProject() {
+        Instant now = Instant.parse("2026-07-20T00:00:00Z");
+        TopicBrief brief = new TopicBrief("PostgreSQL 索引优化", "创建面向开发者的排查教程", "后端开发者",
+                "TROUBLESHOOTING", "INTERMEDIATE", List.of("PostgreSQL", "索引"), null);
+        Article article = new Article(UUID.randomUUID(), "tenant-topic", ContentOrigin.topic(brief), UUID.randomUUID(),
+                "PostgreSQL 索引优化教程", "摘要", "## 分步教程\n正文", brief.keywords(), "zh-CN",
+                "b".repeat(64), 1, ArticleStatus.DRAFT, "editor", "editor", now, now);
+
+        articles.saveWithVersion(article, new ArticleVersion("tenant-topic", article.id(), 1, article.title(),
+                article.summary(), article.markdown(), article.keywords(), "editor", now));
+
+        assertThat(articles.findArticleById("tenant-topic", article.id())).get().satisfies(saved -> {
+            assertThat(saved.projectId()).isNull();
+            assertThat(saved.sourceType().name()).isEqualTo("TOPIC");
+            assertThat(saved.origin().title()).isEqualTo("PostgreSQL 索引优化");
+            assertThat(saved.origin().requestedKeywords()).containsExactly("PostgreSQL", "索引");
+        });
     }
 
     @Test

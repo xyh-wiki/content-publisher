@@ -1,12 +1,12 @@
 package io.contentpublisher.platform;
 
 import io.contentpublisher.platform.application.port.ChannelPublisher;
+import io.contentpublisher.platform.application.ChannelCatalog;
 import io.contentpublisher.platform.domain.ChannelType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
-import java.util.EnumSet;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -22,6 +22,7 @@ class PublisherApplicationTest {
     @Test
     void contextLoadsWithDatabaseMigration() {
         assertThat(channelPublishers).extracting(ChannelPublisher::channelType)
-                .containsExactlyInAnyOrderElementsOf(EnumSet.allOf(ChannelType.class));
+                .containsExactlyInAnyOrderElementsOf(ChannelCatalog.automated().stream()
+                        .map(ChannelCatalog.ChannelDefinition::type).toList());
     }
 }
