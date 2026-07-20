@@ -23,6 +23,9 @@ public class UpdateArticleForm {
     @Size(max = 3200, message = "关键词内容过长")
     private String keywords;
 
+    @Size(max = 1000, message = "标签内容过长")
+    private String tags;
+
     public int getExpectedVersion() { return expectedVersion; }
     public void setExpectedVersion(int expectedVersion) { this.expectedVersion = expectedVersion; }
     public String getTitle() { return title; }
@@ -33,4 +36,6 @@ public class UpdateArticleForm {
     public void setMarkdown(String markdown) { this.markdown = markdown; }
     public String getKeywords() { return keywords; }
     public void setKeywords(String keywords) { this.keywords = keywords; }
+    public String getTags() { return tags; }
+    public void setTags(String tags) { this.tags = tags; }
 }

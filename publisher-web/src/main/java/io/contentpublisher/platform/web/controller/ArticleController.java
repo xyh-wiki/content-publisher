@@ -56,8 +56,9 @@ public class ArticleController {
 
     @PutMapping("/{articleId}")
     public ArticleResponse update(@PathVariable UUID articleId, @Valid @RequestBody UpdateArticleRequest request) {
+        List<String> tags = request.tags() == null ? request.keywords() : request.tags();
         return ArticleResponse.from(publishing.updateArticle(actors.currentActor(), articleId,
-                request.expectedVersion(), request.title(), request.summary(), request.markdown(), request.keywords()));
+                request.expectedVersion(), request.title(), request.summary(), request.markdown(), tags, request.keywords()));
     }
 
     @PostMapping("/{articleId}/approve")

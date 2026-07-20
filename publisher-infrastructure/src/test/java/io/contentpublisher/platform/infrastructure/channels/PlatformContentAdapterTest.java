@@ -4,6 +4,7 @@ import io.contentpublisher.platform.application.PlatformContentAdapter;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.ContentOrigin;
 import io.contentpublisher.platform.domain.ContentFormat;
 import org.junit.jupiter.api.Test;
 
@@ -50,9 +51,10 @@ class PlatformContentAdapterTest {
 
     private Article article(String title, String summary) {
         Instant now = Instant.parse("2026-07-20T00:00:00Z");
-        return new Article(UUID.randomUUID(), "tenant", UUID.randomUUID(), UUID.randomUUID(), title, summary,
+        return new Article(UUID.randomUUID(), "tenant", ContentOrigin.git(UUID.randomUUID()), UUID.randomUUID(), title, summary,
                 "## 核心能力\n\n支持 **Markdown** 与 [项目地址](https://example.com)。",
-                List.of("Java", "内容分发"), "zh-CN", "a".repeat(40), 1, ArticleStatus.APPROVED,
+                List.of("Java", "内容分发"), List.of("Java 内容分发教程", "多平台发布方案"),
+                "zh-CN", "a".repeat(40), 1, ArticleStatus.APPROVED,
                 "editor", "admin", now, now);
     }
 }

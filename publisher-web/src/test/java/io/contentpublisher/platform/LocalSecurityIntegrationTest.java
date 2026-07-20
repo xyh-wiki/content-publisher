@@ -257,7 +257,8 @@ class LocalSecurityIntegrationTest {
                         .param("expectedVersion", "1")
                         .param("title", "企业级管理后台")
                         .param("summary", "更新后的文章摘要")
-                        .param("keywords", "企业级, 内容平台")
+                        .param("tags", "#企业级, 内容平台")
+                        .param("keywords", "企业级内容平台教程, 多渠道发布方案")
                         .param("markdown", "# 企业级管理后台\n\n正文内容"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/articles/" + articleId));
@@ -265,7 +266,13 @@ class LocalSecurityIntegrationTest {
         mockMvc.perform(get("/articles/" + articleId).session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("企业级管理后台")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("企业级内容平台教程")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("版本 2")));
+
+        assertThat(articles.findArticleById("tenant-local", articleId)).get().satisfies(saved -> {
+            assertThat(saved.tags()).containsExactly("企业级", "内容平台");
+            assertThat(saved.keywords()).containsExactly("企业级内容平台教程", "多渠道发布方案");
+        });
 
         mockMvc.perform(post("/articles/" + articleId + "/approve").session(session).with(csrf()))
                 .andExpect(status().is3xxRedirection())

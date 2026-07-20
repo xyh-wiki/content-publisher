@@ -227,7 +227,7 @@ public class PortalManagementController {
         }
         try {
             publishing.updateArticle(actors.currentActor(), articleId, form.getExpectedVersion(), form.getTitle(),
-                    form.getSummary(), form.getMarkdown(), splitValues(form.getKeywords()));
+                    form.getSummary(), form.getMarkdown(), splitValues(form.getTags()), splitValues(form.getKeywords()));
             redirectAttributes.addFlashAttribute("success", "文章已保存为新版本");
         } catch (ApplicationException | IllegalArgumentException exception) {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
@@ -306,6 +306,7 @@ public class PortalManagementController {
         form.setTitle(article.title());
         form.setSummary(article.summary());
         form.setMarkdown(article.markdown());
+        form.setTags(String.join("\n", article.tags()));
         form.setKeywords(String.join("\n", article.keywords()));
         return form;
     }

@@ -118,10 +118,11 @@ public final class ProjectApplicationService {
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.git(projectId), generationJobId,
                 generated.title(), generated.summary(),
-                generated.markdown(), generated.keywords(), policy.language(), snapshot.revision(),
+                generated.markdown(), generated.tags(), generated.keywords(), policy.language(), snapshot.revision(),
                 1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
         Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
-                article.title(), article.summary(), article.markdown(), article.keywords(), actor.subject(), now));
+                article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
+                actor.subject(), now));
         auditRecorder.record(actor, "ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("projectId", projectId.toString(), "sourceRevision", snapshot.revision(),
                         "language", policy.language()));
@@ -137,10 +138,11 @@ public final class ProjectApplicationService {
         ContentGenerator.GeneratedContent generated = contentGenerator.generateFromBrief(actor.tenantId(), brief, policy);
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.topic(brief), generationJobId,
-                generated.title(), generated.summary(), generated.markdown(), generated.keywords(), policy.language(),
+                generated.title(), generated.summary(), generated.markdown(), generated.tags(), generated.keywords(), policy.language(),
                 topicRevision(brief), 1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
         Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
-                article.title(), article.summary(), article.markdown(), article.keywords(), actor.subject(), now));
+                article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
+                actor.subject(), now));
         auditRecorder.record(actor, "TOPIC_ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("topic", brief.topic(), "articleType", brief.articleType(),
                         "knowledgeLevel", brief.knowledgeLevel(), "language", policy.language()));
@@ -158,11 +160,13 @@ public final class ProjectApplicationService {
                 actor.tenantId(), brief, snapshot, policy);
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.website(brief, snapshot),
-                generationJobId, generated.title(), generated.summary(), generated.markdown(), generated.keywords(),
-                policy.language(), websiteRevision(snapshot), 1, ArticleStatus.DRAFT, actor.subject(), actor.subject(),
+                generationJobId, generated.title(), generated.summary(), generated.markdown(), generated.tags(),
+                generated.keywords(), policy.language(), websiteRevision(snapshot), 1, ArticleStatus.DRAFT,
+                actor.subject(), actor.subject(),
                 now, now);
         Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
-                article.title(), article.summary(), article.markdown(), article.keywords(), actor.subject(), now));
+                article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
+                actor.subject(), now));
         auditRecorder.record(actor, "WEBSITE_ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("websiteHost", java.net.URI.create(snapshot.url()).getHost(), "language", policy.language()));
         return saved;

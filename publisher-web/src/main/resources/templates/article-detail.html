@@ -21,7 +21,8 @@
                         <form class="stack-form" th:action="@{/articles/{id}/edit(id=${article.id})}" th:object="${updateArticleForm}" method="post">
                             <input type="hidden" th:field="*{expectedVersion}"><div class="field"><label>文章标题</label><input th:field="*{title}" maxlength="500" required th:readonly="${!editable or !canEdit}"></div>
                             <div class="field"><label>内容摘要</label><textarea th:field="*{summary}" rows="4" maxlength="2000" required th:readonly="${!editable or !canEdit}"></textarea></div>
-                            <div class="field"><label>关键词</label><textarea th:field="*{keywords}" rows="2" placeholder="用于平台标签、搜索优化和短帖适配" th:readonly="${!editable or !canEdit}"></textarea></div>
+                            <div class="grid-2"><div class="field"><label>发布标签</label><textarea th:field="*{tags}" rows="3" placeholder="每行或逗号分隔，例如：Spring Boot、可观测性" th:readonly="${!editable or !canEdit}"></textarea><small>用于平台 Hashtag 和内容分类，最多 15 个。</small></div>
+                                <div class="field"><label>推荐关键词</label><textarea th:field="*{keywords}" rows="3" placeholder="每行或逗号分隔，例如：Spring Boot 可观测性教程" th:readonly="${!editable or !canEdit}"></textarea><small>用于搜索优化、选题延展和内容推荐，最多 30 个。</small></div></div>
                             <div class="field"><label>Markdown 正文</label><textarea class="markdown-editor" th:field="*{markdown}" rows="30" maxlength="20000" required th:readonly="${!editable or !canEdit}"></textarea></div>
                             <div class="form-footer"><small th:if="${!editable}">审核通过或已发布文章不能直接修改。</small><span th:if="${editable}"></span>
                                 <button class="primary-button" type="submit" th:disabled="${!editable or !canEdit}">保存为新版本</button></div>
@@ -55,8 +56,10 @@
                         <div th:if="${article.sourceType.name() == 'GIT'}"><p>基于 Git 仓库快照生成。</p><small class="mono" th:text="${article.sourceRevision}">revision</small></div>
                         <div th:if="${article.sourceType.name() == 'TOPIC'}"><strong th:text="${article.origin.title}">主题</strong><p th:text="${article.origin.description}">描述</p><small th:text="|${article.origin.articleType} · ${article.origin.knowledgeLevel} · ${article.origin.audience}|">meta</small></div>
                         <div th:if="${article.sourceType.name() == 'WEBSITE'}"><strong th:text="${article.origin.title}">网站</strong><p th:text="${article.origin.description}">推荐角度</p><a class="text-link" th:href="${article.origin.sourceUrl}" target="_blank" rel="noopener noreferrer">访问来源网站 ↗</a></div></section>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Keywords</p><h3>内容标签</h3></div></div>
-                        <div class="tag-row"><span class="tag" th:each="keyword : ${article.keywords}" th:text="${keyword}">keyword</span><span th:if="${#lists.isEmpty(article.keywords)}">暂无关键词</span></div></section>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">Publishing tags</p><h3>发布标签</h3></div></div>
+                        <div class="tag-row"><span class="tag" th:each="tag : ${article.tags}" th:text="${tag}">tag</span><span th:if="${#lists.isEmpty(article.tags)}">暂无标签</span></div></section>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">Recommended keywords</p><h3>推荐关键词</h3></div></div>
+                        <div class="tag-row"><span class="tag" th:each="keyword : ${article.keywords}" th:text="${keyword}">keyword</span><span th:if="${#lists.isEmpty(article.keywords)}">暂无推荐关键词</span></div></section>
 
                     <section class="card"><div class="card-header"><div><p class="section-kicker">API publishing</p><h3>自动发布</h3><p>提交后按目标平台格式自动适配，并由后台任务调用官方 API。</p></div></div>
                         <div class="alert warning" th:if="${#lists.isEmpty(channelAccounts)}">尚未配置 API 渠道。前往 <a class="text-link" th:href="@{/channels}">渠道管理</a>添加账号。</div>

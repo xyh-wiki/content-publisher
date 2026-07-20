@@ -37,14 +37,28 @@ class OpenAiCompatibleContentGeneratorTest {
     @Test
     void shouldNormalizeKeywordsAndAcceptControlledOutput() throws Exception {
         String markdown = "## 项目概览\nGit 自动分析平台。" + "这是经过仓库事实校验的技术说明。".repeat(20);
-        OpenAiCompatibleContentGenerator generator = generator(aiEnvelope(markdown, List.of("Java", "AI", "多余词")));
+        OpenAiCompatibleContentGenerator generator = generator(aiEnvelope(markdown,
+                List.of("#Java", "内容生成"), List.of("Java 教程", "AI", "多余词")));
         GenerationPolicy policy = new GenerationPolicy("zh-CN", "专业", 200, 2000, 2,
                 List.of("Git"), List.of("夸大宣传"), List.of("项目概览"));
 
         var result = generator.generate("tenant-test", snapshot(), policy);
 
-        assertThat(result.keywords()).containsExactly("Git", "Java");
+        assertThat(result.tags()).containsExactly("Java", "内容生成");
+        assertThat(result.keywords()).containsExactly("Git", "Java 教程");
         assertThat(result.markdown()).contains("## 项目概览", "Git");
+    }
+
+    @Test
+    void shouldFallBackToKeywordsWhenLegacyResponseHasNoTags() throws Exception {
+        String markdown = "## 项目概览\nGit 自动分析平台。" + "这是经过仓库事实校验的技术说明。".repeat(20);
+        OpenAiCompatibleContentGenerator generator = generator(aiEnvelope(markdown, List.of("Git", "Java")));
+        GenerationPolicy policy = new GenerationPolicy("zh-CN", "专业", 200, 2000, 3,
+                List.of("Git"), List.of(), List.of("项目概览"));
+
+        var result = generator.generate("tenant-test", snapshot(), policy);
+
+        assertThat(result.tags()).containsExactly("Git", "Java");
     }
 
     @Test
@@ -116,6 +130,18 @@ class OpenAiCompatibleContentGeneratorTest {
                 "title", "Git 项目分析平台",
                 "summary", "依据仓库事实生成文章。",
                 "markdown", markdown,
+                "keywords", keywords));
+        return mapper.writeValueAsString(java.util.Map.of("choices", List.of(
+                java.util.Map.of("message", java.util.Map.of("content", content)))));
+    }
+
+    private String aiEnvelope(String markdown, List<String> tags, List<String> keywords) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        String content = mapper.writeValueAsString(java.util.Map.of(
+                "title", "Git 项目分析平台",
+                "summary", "依据仓库事实生成文章。",
+                "markdown", markdown,
+                "tags", tags,
                 "keywords", keywords));
         return mapper.writeValueAsString(java.util.Map.of("choices", List.of(
                 java.util.Map.of("message", java.util.Map.of("content", content)))));

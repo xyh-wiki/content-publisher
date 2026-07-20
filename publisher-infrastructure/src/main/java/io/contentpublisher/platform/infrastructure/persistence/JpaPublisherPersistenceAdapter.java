@@ -125,7 +125,7 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         entity.articleType = article.origin().articleType(); entity.knowledgeLevel = article.origin().knowledgeLevel();
         entity.sourceKeywordsJson = write(article.origin().requestedKeywords());
         entity.generationJobId = article.generationJobId(); entity.title = article.title();
-        entity.summary = article.summary(); entity.markdown = article.markdown();
+        entity.summary = article.summary(); entity.markdown = article.markdown(); entity.tagsJson = write(article.tags());
         entity.keywordsJson = write(article.keywords()); entity.language = article.language();
         entity.sourceRevision = article.sourceRevision(); entity.currentVersion = article.currentVersion();
         entity.status = article.status().name();
@@ -140,7 +140,8 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         ArticleVersionEntity entity = new ArticleVersionEntity();
         entity.id = new ArticleVersionKey(version.articleId(), version.versionNumber());
         entity.tenantId = version.tenantId(); entity.title = version.title(); entity.summary = version.summary();
-        entity.markdown = version.markdown(); entity.keywordsJson = write(version.keywords());
+        entity.markdown = version.markdown(); entity.tagsJson = write(version.tags());
+        entity.keywordsJson = write(version.keywords());
         entity.createdBy = version.createdBy(); entity.createdAt = version.createdAt();
         articleVersions.save(entity);
         return saved;
@@ -177,7 +178,7 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     public List<ArticleVersion> findVersions(String tenantId, UUID articleId) {
         return articleVersions.findVersions(tenantId, articleId).stream().map(entity ->
                 new ArticleVersion(entity.tenantId, entity.id.articleId, entity.id.versionNumber,
-                        entity.title, entity.summary, entity.markdown, read(entity.keywordsJson),
+                        entity.title, entity.summary, entity.markdown, read(entity.tagsJson), read(entity.keywordsJson),
                         entity.createdBy, entity.createdAt)).toList();
     }
 
@@ -360,7 +361,7 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
                 : new ContentOrigin(sourceType, null, entity.sourceUrl, entity.sourceTitle, entity.sourceDescription,
                         entity.targetAudience, entity.articleType, entity.knowledgeLevel, read(entity.sourceKeywordsJson));
         return new Article(entity.id, entity.tenantId, origin, entity.generationJobId,
-                entity.title, entity.summary, entity.markdown,
+                entity.title, entity.summary, entity.markdown, read(entity.tagsJson),
                 read(entity.keywordsJson), entity.language, entity.sourceRevision, entity.currentVersion,
                 ArticleStatus.valueOf(entity.status),
                 entity.createdBy, entity.updatedBy,

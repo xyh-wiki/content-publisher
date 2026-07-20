@@ -62,17 +62,24 @@ class TenantPersistenceIntegrationTest {
         Project project = project("tenant-version", "https://github.com/contentpublisher/versioned.git");
         projects.save(project);
         Instant now = Instant.parse("2026-07-20T00:00:00Z");
-        Article article = new Article(UUID.randomUUID(), "tenant-version", project.id(), null,
-                "Title", "Summary", "## Body", List.of("Java"), "en", "abc123", 1,
+        Article article = new Article(UUID.randomUUID(), "tenant-version", ContentOrigin.git(project.id()), null,
+                "Title", "Summary", "## Body", List.of("Java", "Publishing"),
+                List.of("Java publishing tutorial", "content workflow"), "en", "abc123", 1,
                 ArticleStatus.DRAFT, "editor", "editor", now, now);
 
         articles.saveWithVersion(article, new ArticleVersion("tenant-version", article.id(), 1,
-                article.title(), article.summary(), article.markdown(), article.keywords(), "editor", now));
+                article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(), "editor", now));
 
-        assertThat(articles.findArticleById("tenant-version", article.id())).get()
-                .extracting(Article::currentVersion).isEqualTo(1);
-        assertThat(articles.findVersions("tenant-version", article.id()))
-                .extracting(ArticleVersion::versionNumber).containsExactly(1);
+        assertThat(articles.findArticleById("tenant-version", article.id())).get().satisfies(saved -> {
+            assertThat(saved.currentVersion()).isEqualTo(1);
+            assertThat(saved.tags()).containsExactly("Java", "Publishing");
+            assertThat(saved.keywords()).containsExactly("Java publishing tutorial", "content workflow");
+        });
+        assertThat(articles.findVersions("tenant-version", article.id())).singleElement().satisfies(version -> {
+            assertThat(version.versionNumber()).isEqualTo(1);
+            assertThat(version.tags()).containsExactly("Java", "Publishing");
+            assertThat(version.keywords()).containsExactly("Java publishing tutorial", "content workflow");
+        });
         assertThat(articles.findVersions("other-tenant", article.id())).isEmpty();
     }
 

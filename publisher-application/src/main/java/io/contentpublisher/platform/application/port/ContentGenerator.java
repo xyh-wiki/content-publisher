@@ -14,9 +14,14 @@ public interface ContentGenerator {
     GeneratedContent generateFromWebsite(String tenantId, WebsiteBrief brief, WebsiteSnapshot snapshot,
                                          GenerationPolicy policy);
 
-    record GeneratedContent(String title, String summary, String markdown, List<String> keywords) {
+    record GeneratedContent(String title, String summary, String markdown, List<String> tags, List<String> keywords) {
         public GeneratedContent {
+            tags = tags == null ? List.of() : List.copyOf(tags);
             keywords = keywords == null ? List.of() : List.copyOf(keywords);
+        }
+
+        public GeneratedContent(String title, String summary, String markdown, List<String> keywords) {
+            this(title, summary, markdown, keywords, keywords);
         }
     }
 }

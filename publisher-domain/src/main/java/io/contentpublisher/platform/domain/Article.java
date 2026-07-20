@@ -12,6 +12,7 @@ public record Article(
         String title,
         String summary,
         String markdown,
+        List<String> tags,
         List<String> keywords,
         String language,
         String sourceRevision,
@@ -22,6 +23,7 @@ public record Article(
         Instant createdAt,
         Instant updatedAt) {
     public Article {
+        tags = tags == null ? List.of() : List.copyOf(tags);
         keywords = keywords == null ? List.of() : List.copyOf(keywords);
         if (origin == null) throw new IllegalArgumentException("文章来源不能为空");
         if (currentVersion < 1) throw new IllegalArgumentException("文章版本号必须大于零");
@@ -31,8 +33,16 @@ public record Article(
                    String markdown, List<String> keywords, String language, String sourceRevision,
                    int currentVersion, ArticleStatus status, String createdBy, String updatedBy,
                    Instant createdAt, Instant updatedAt) {
-        this(id, tenantId, ContentOrigin.git(projectId), generationJobId, title, summary, markdown, keywords,
+        this(id, tenantId, ContentOrigin.git(projectId), generationJobId, title, summary, markdown, keywords, keywords,
                 language, sourceRevision, currentVersion, status, createdBy, updatedBy, createdAt, updatedAt);
+    }
+
+    public Article(UUID id, String tenantId, ContentOrigin origin, UUID generationJobId, String title,
+                   String summary, String markdown, List<String> keywords, String language, String sourceRevision,
+                   int currentVersion, ArticleStatus status, String createdBy, String updatedBy,
+                   Instant createdAt, Instant updatedAt) {
+        this(id, tenantId, origin, generationJobId, title, summary, markdown, keywords, keywords, language,
+                sourceRevision, currentVersion, status, createdBy, updatedBy, createdAt, updatedAt);
     }
 
     public UUID projectId() {

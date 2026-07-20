@@ -235,7 +235,7 @@ public final class PublishingApplicationService {
     }
 
     public Article updateArticle(ActorContext actor, UUID articleId, int expectedVersion, String title,
-                                 String summary, String markdown, List<String> keywords) {
+                                 String summary, String markdown, List<String> tags, List<String> keywords) {
         Article article = getArticle(actor, articleId);
         if (article.status() == ArticleStatus.APPROVED || article.status() == ArticleStatus.PUBLISHED) {
             throw new ApplicationException("ARTICLE_STATE_CONFLICT", "审核通过或已发布文章不能直接修改");
@@ -246,18 +246,25 @@ public final class PublishingApplicationService {
         String normalizedTitle = requireText(title, "文章标题不能为空", 500);
         String normalizedSummary = requireText(summary, "文章摘要不能为空", 2000);
         String normalizedMarkdown = requireText(markdown, "文章正文不能为空", 20000);
+        List<String> normalizedTags = normalizeTags(tags);
         List<String> normalizedKeywords = normalizeKeywords(keywords);
         int nextVersion = expectedVersion + 1;
         Instant now = clock.instant();
         Article updated = new Article(article.id(), article.tenantId(), article.origin(), article.generationJobId(),
-                normalizedTitle, normalizedSummary, normalizedMarkdown, normalizedKeywords, article.language(),
+                normalizedTitle, normalizedSummary, normalizedMarkdown, normalizedTags, normalizedKeywords, article.language(),
                 article.sourceRevision(), nextVersion, ArticleStatus.DRAFT, article.createdBy(), actor.subject(),
                 article.createdAt(), now);
         Article saved = articles.saveWithVersion(updated, new ArticleVersion(actor.tenantId(), articleId, nextVersion,
-                normalizedTitle, normalizedSummary, normalizedMarkdown, normalizedKeywords, actor.subject(), now));
+                normalizedTitle, normalizedSummary, normalizedMarkdown, normalizedTags, normalizedKeywords,
+                actor.subject(), now));
         auditRecorder.record(actor, "ARTICLE_VERSION_CREATED", "ARTICLE", articleId,
                 Map.of("version", Integer.toString(nextVersion)));
         return saved;
+    }
+
+    public Article updateArticle(ActorContext actor, UUID articleId, int expectedVersion, String title,
+                                 String summary, String markdown, List<String> keywords) {
+        return updateArticle(actor, articleId, expectedVersion, title, summary, markdown, keywords, keywords);
     }
 
     public Article approveArticle(ActorContext actor, UUID articleId) {
@@ -416,7 +423,7 @@ public final class PublishingApplicationService {
 
     private Article updateArticleStatus(Article article, ArticleStatus status, String subject) {
         return articles.save(new Article(article.id(), article.tenantId(), article.origin(), article.generationJobId(),
-                article.title(), article.summary(), article.markdown(), article.keywords(), article.language(),
+                article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(), article.language(),
                 article.sourceRevision(), article.currentVersion(), status, article.createdBy(), subject,
                 article.createdAt(), clock.instant()));
     }
@@ -478,6 +485,16 @@ public final class PublishingApplicationService {
                 .filter(value -> !value.isEmpty()).distinct().toList();
         if (normalized.size() > 30 || normalized.stream().anyMatch(value -> value.length() > 100)) {
             throw new ApplicationException("INVALID_ARGUMENT", "关键词最多 30 个且每个不超过 100 字符");
+        }
+        return normalized;
+    }
+
+    private List<String> normalizeTags(List<String> tags) {
+        if (tags == null) return List.of();
+        List<String> normalized = tags.stream().filter(java.util.Objects::nonNull).map(String::trim)
+                .map(value -> value.replaceFirst("^#+", "")).filter(value -> !value.isEmpty()).distinct().toList();
+        if (normalized.size() > 15 || normalized.stream().anyMatch(value -> value.length() > 50)) {
+            throw new ApplicationException("INVALID_ARGUMENT", "标签最多 15 个且每个不超过 50 字符");
         }
         return normalized;
     }

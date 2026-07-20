@@ -11,7 +11,8 @@ import java.util.Locale;
 public final class PlatformContentAdapter {
     public AdaptedContent adapt(Article article, ChannelType channelType, String canonicalUrl) {
         ChannelCatalog.ChannelDefinition definition = ChannelCatalog.definition(channelType);
-        List<String> tags = article.keywords().stream().map(this::normalizeTag)
+        List<String> sourceTags = article.tags().isEmpty() ? article.keywords() : article.tags();
+        List<String> tags = sourceTags.stream().map(this::normalizeTag)
                 .filter(value -> !value.isBlank()).distinct().limit(tagLimit(channelType)).toList();
         String body = switch (definition.contentFormat()) {
             case MARKDOWN -> markdown(article, channelType, canonicalUrl);
