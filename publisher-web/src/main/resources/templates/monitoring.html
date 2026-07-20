@@ -15,7 +15,7 @@
               th:data-monitor-live-url="@{/monitoring/live}" th:data-monitor-range="${selectedRange}">
             <section class="monitor-heading">
                 <div>
-                    <p class="section-kicker">Operations command center</p>
+                    <p class="section-kicker">运行监控</p>
                     <h2>全链路监控大屏</h2>
                     <p>基于数据库精确聚合，监控内容生产、任务队列、渠道账号与全量发布结果。</p>
                 </div>
@@ -42,15 +42,15 @@
             </section>
 
             <section class="monitor-metric-grid" aria-label="核心指标">
-                <article class="monitor-metric-card metric-project"><span>项目总量</span><strong th:text="${projectCount}">0</strong><small th:text="|${rangeLabel}活动 ${projectActivityCount}|">窗口活动 0</small><i>PROJECTS</i></article>
-                <article class="monitor-metric-card metric-content"><span>内容总量</span><strong th:text="${articleCount}">0</strong><small th:text="|${rangeLabel}活动 ${articleActivityCount}|">窗口活动 0</small><i>CONTENT</i></article>
-                <article class="monitor-metric-card metric-jobs"><span>活跃任务</span><strong th:text="${activeJobCount}">0</strong><small th:text="|${rangeLabel}活动 ${jobActivityCount}|">窗口活动 0</small><i>JOBS</i></article>
-                <article class="monitor-metric-card metric-publish"><span>发布记录</span><strong th:text="${publicationCount}">0</strong><small th:text="|${rangeLabel}活动 ${publicationActivityCount}|">窗口活动 0</small><i>PUBLISH</i></article>
+                <article class="monitor-metric-card metric-project"><span>项目总量</span><strong th:text="${projectCount}">0</strong><small th:text="|${rangeLabel}活动 ${projectActivityCount}|">窗口活动 0</small><i>项目</i></article>
+                <article class="monitor-metric-card metric-content"><span>内容总量</span><strong th:text="${articleCount}">0</strong><small th:text="|${rangeLabel}活动 ${articleActivityCount}|">窗口活动 0</small><i>内容</i></article>
+                <article class="monitor-metric-card metric-jobs"><span>活跃任务</span><strong th:text="${activeJobCount}">0</strong><small th:text="|${rangeLabel}活动 ${jobActivityCount}|">窗口活动 0</small><i>任务</i></article>
+                <article class="monitor-metric-card metric-publish"><span>发布记录</span><strong th:text="${publicationCount}">0</strong><small th:text="|${rangeLabel}活动 ${publicationActivityCount}|">窗口活动 0</small><i>发布</i></article>
             </section>
 
             <div class="monitor-grid monitor-grid-overview">
                 <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">Content pipeline</p><h3>内容生产漏斗</h3></div><span th:text="|${publishableArticleCount} 篇可发布|">0 篇可发布</span></div>
+                    <div class="monitor-panel-header"><div><p class="section-kicker">内容流程</p><h3>内容生产漏斗</h3></div><span th:text="|${publishableArticleCount} 篇可发布|">0 篇可发布</span></div>
                     <div class="monitor-stage"><div><strong>项目就绪率</strong><span th:text="|${readyProjectRate}%|">0%</span></div><progress class="tone-success" th:value="${readyProjectRate}" max="100">0</progress></div>
                     <div class="monitor-bars">
                         <div class="monitor-bar" th:each="item : ${projectStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div>
@@ -62,14 +62,14 @@
                 </section>
 
                 <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">Job runtime</p><h3>任务运行状态</h3></div><span th:text="|成功率 ${jobSuccessRate}%|">成功率 0%</span></div>
+                    <div class="monitor-panel-header"><div><p class="section-kicker">任务运行</p><h3>任务运行状态</h3></div><span th:text="|成功率 ${jobSuccessRate}%|">成功率 0%</span></div>
                     <div class="monitor-bars monitor-bars-spacious">
                         <div class="monitor-bar" th:each="item : ${jobStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div>
                     </div>
                 </section>
 
                 <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">Distribution health</p><h3>发布运行状态</h3></div><span th:text="|成功率 ${publicationSuccessRate}%|">成功率 0%</span></div>
+                    <div class="monitor-panel-header"><div><p class="section-kicker">发布状态</p><h3>发布运行状态</h3></div><span th:text="|成功率 ${publicationSuccessRate}%|">成功率 0%</span></div>
                     <div class="monitor-bars monitor-bars-spacious">
                         <div class="monitor-bar" th:each="item : ${publicationStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div>
                     </div>
@@ -82,7 +82,7 @@
 
             <div class="monitor-grid monitor-grid-detail">
                 <section class="monitor-panel monitor-channel-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">Channel performance</p><h3>渠道发布表现</h3><small th:text="${rangeLabel}">近 24 小时</small></div><a th:href="@{/publishing}">发布中心 ↗</a></div>
+                    <div class="monitor-panel-header"><div><p class="section-kicker">渠道表现</p><h3>渠道发布表现</h3><small th:text="${rangeLabel}">近 24 小时</small></div><a th:href="@{/publishing}">发布中心 ↗</a></div>
                     <div class="monitor-empty" th:if="${#lists.isEmpty(channelPerformance)}">暂无发布记录，渠道表现将在首次发布后显示。</div>
                     <div class="monitor-channel-list" th:unless="${#lists.isEmpty(channelPerformance)}">
                         <div class="monitor-channel-row monitor-channel-head"><span>渠道</span><span>记录</span><span>成功</span><span>失败</span><span>成功率</span></div>
@@ -91,7 +91,7 @@
                 </section>
 
                 <section class="monitor-panel monitor-alert-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">Active alerts</p><h3>运行告警</h3><small th:text="${rangeLabel}">近 24 小时</small></div><span th:text="|${alerts.size()} 项|">0 项</span></div>
+                    <div class="monitor-panel-header"><div><p class="section-kicker">当前告警</p><h3>运行告警</h3><small th:text="${rangeLabel}">近 24 小时</small></div><span th:text="|${alerts.size()} 项|">0 项</span></div>
                     <div class="monitor-alert-list">
                         <a th:each="alert : ${alerts}" th:href="${alert.link}" th:class="|monitor-alert alert-${alert.tone}|"><i></i><span><strong th:text="${alert.title}">告警</strong><small th:text="${alert.description}">说明</small></span><b th:text="${alert.count}">0</b></a>
                     </div>
@@ -101,13 +101,13 @@
 
             <div class="monitor-grid monitor-grid-feed">
                 <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">Recent jobs</p><h3>最近任务动态</h3></div><a th:href="@{/projects}">任务中心 ↗</a></div>
+                    <div class="monitor-panel-header"><div><p class="section-kicker">最近任务</p><h3>最近任务动态</h3></div><a th:href="@{/projects}">任务中心 ↗</a></div>
                     <div class="monitor-empty" th:if="${#lists.isEmpty(recentJobs)}">当前没有后台任务。</div>
                     <div class="monitor-feed" th:unless="${#lists.isEmpty(recentJobs)}"><a th:each="job : ${recentJobs}" th:href="@{/jobs/{id}(id=${job.id})}"><i th:class="|feed-dot status-${job.status.name().toLowerCase()}|"></i><span><strong th:text="${jobTypeNames.get(job.type)}">任务</strong><small th:text="${job.updatedAt}">时间</small></span><em th:class="|status-pill status-${job.status.name().toLowerCase()}|" th:text="${jobStatusNames.get(job.status)}">状态</em></a></div>
                 </section>
 
                 <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">Publication activity</p><h3>最近发布动态</h3></div><a th:href="@{/publishing}">全部记录 ↗</a></div>
+                    <div class="monitor-panel-header"><div><p class="section-kicker">发布动态</p><h3>最近发布动态</h3></div><a th:href="@{/publishing}">全部记录 ↗</a></div>
                     <div class="monitor-empty" th:if="${#lists.isEmpty(recentPublications)}">当前没有发布记录。</div>
                     <div class="monitor-feed" th:unless="${#lists.isEmpty(recentPublications)}"><a th:each="record : ${recentPublications}" th:href="@{/articles/{id}(id=${record.articleId})}"><i th:class="|feed-dot status-${record.status.name().toLowerCase()}|"></i><span><strong th:text="${articleNames.get(record.articleId) != null ? articleNames.get(record.articleId) : record.articleId}">文章</strong><small th:text="|${channelNames.get(record.channelType)} · ${record.method.name() == 'API' ? 'API 自动发布' : '人工发布'} · ${record.updatedAt}|">渠道与时间</small></span><em th:class="|status-pill status-${record.status.name().toLowerCase()}|" th:text="${publicationStatusNames.get(record.status)}">状态</em></a></div>
                 </section>

@@ -9,7 +9,7 @@
                 <div class="process-item active"><span>2</span><div><strong>生成文章</strong><small>配置生成策略</small></div></div>
                 <div class="process-item"><span>3</span><div><strong>编辑审核</strong><small>锁定发布版本</small></div></div>
                 <div class="process-item"><span>4</span><div><strong>适配发布</strong><small>分发到各平台</small></div></div></div>
-            <section class="page-header"><div><p class="section-kicker">Repository source</p><h2 th:text="${project.name}">项目</h2><p th:text="${project.description ?: '仓库尚未提供项目描述。'}">描述</p></div>
+            <section class="page-header"><div><p class="section-kicker">仓库来源</p><h2 th:text="${project.name}">项目</h2><p th:text="${project.description ?: '仓库尚未提供项目描述。'}">描述</p></div>
                 <div class="header-actions"><a class="secondary-link" th:href="@{/projects}">返回项目库</a></div></section>
             <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
 
@@ -19,7 +19,7 @@
                 <div class="wide"><span>识别技术栈</span><div class="tag-row"><span class="tag" th:each="language : ${project.languages}" th:text="${language}">Java</span></div></div></section>
 
             <div class="content-aside-grid section-gap">
-                <section class="card"><div class="card-header"><div><p class="section-kicker">AI generation</p><h3>生成文章草稿</h3><p>草稿作为完整内容主稿，发布时再按平台自动生成 Markdown、纯文本或短帖版本。</p></div>
+                <section class="card"><div class="card-header"><div><p class="section-kicker">内容生成</p><h3>生成文章草稿</h3><p>草稿作为完整内容主稿，发布时再按平台自动生成 Markdown、纯文本或短帖版本。</p></div>
                     <span class="service-badge" th:classappend="${aiEnabled} ? ' online' : ' offline'" th:text="${aiEnabled} ? |${aiModel}| : 'AI 未配置'">AI</span></div>
                 <div class="alert warning" th:if="${!aiEnabled and canAdmin}">请先在 <a class="text-link" th:href="@{/settings/ai}">AI 服务</a>中设置 Base URL、API Key 和模型。</div>
                 <div class="alert warning" th:if="${!aiEnabled and !canAdmin}">AI 内容生成尚未启用，请联系租户管理员完成配置。</div>
@@ -35,11 +35,11 @@
                         <div class="form-footer"><small>生成任务在后台运行，通常需要数十秒。</small><button class="primary-button" type="submit" th:disabled="${!aiEnabled or project.status.name() != 'READY' or !canEdit}">生成文章主稿</button></div>
                     </form>
                 </section>
-                <aside class="sticky-column"><section class="card"><div class="card-header"><div><p class="section-kicker">Generated content</p><h3>项目文章</h3></div><span class="count-badge" th:text="${articles.size()}">0</span></div>
+                <aside class="sticky-column"><section class="card"><div class="card-header"><div><p class="section-kicker">生成内容</p><h3>项目文章</h3></div><span class="count-badge" th:text="${articles.size()}">0</span></div>
                     <div class="empty-state" th:if="${#lists.isEmpty(articles)}">还没有文章主稿。</div><div class="compact-list" th:unless="${#lists.isEmpty(articles)}">
                         <a class="compact-item" th:each="article : ${articles}" th:href="@{/articles/{id}(id=${article.id})}"><span><strong th:text="${article.title}">标题</strong><small th:text="|v${article.currentVersion} · ${article.language}|">版本</small></span>
                             <span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></a></div></section>
-                    <section class="card"><p class="section-kicker">Quality controls</p><h3>输出受控</h3><ul class="checklist"><li>仅基于仓库事实生成</li><li>关键词和章节硬性校验</li><li>生成任务、源版本可追踪</li><li>发布前必须人工审核</li></ul></section></aside>
+                    <section class="card"><p class="section-kicker">质量控制</p><h3>输出受控</h3><ul class="checklist"><li>仅基于仓库事实生成</li><li>关键词和章节硬性校验</li><li>生成任务、源版本可追踪</li><li>发布前必须人工审核</li></ul></section></aside>
             </div>
         </main>
     </div></div></body></html>

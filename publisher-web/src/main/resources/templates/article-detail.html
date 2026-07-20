@@ -9,7 +9,7 @@
                 <div class="process-item done"><span>✓</span><div><strong>生成文章</strong><small>主稿已创建</small></div></div>
                 <div class="process-item" th:classappend="${article.status.name() == 'DRAFT' or article.status.name() == 'REJECTED'} ? ' active' : ' done'"><span th:text="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'} ? '✓' : '3'">3</span><div><strong>编辑审核</strong><small>确认发布基线</small></div></div>
                 <div class="process-item" th:classappend="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'} ? ' active'"><span>4</span><div><strong>适配发布</strong><small>分发到各平台</small></div></div></div>
-            <section class="page-header"><div><p class="section-kicker">Master article</p><h2 th:text="${article.title}">文章标题</h2>
+            <section class="page-header"><div><p class="section-kicker">文章主稿</p><h2 th:text="${article.title}">文章标题</h2>
                 <p th:text="|主稿 v${article.currentVersion} · ${article.language} · 源版本 ${article.sourceRevision}|">meta</p></div>
                 <div class="header-actions"><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span>
                     <a class="secondary-link" th:if="${article.projectId != null}" th:href="@{/projects/{id}(id=${article.projectId})}">返回项目</a><a class="secondary-link" th:if="${article.projectId == null}" th:href="@{/projects}">返回创作中心</a></div></section>
@@ -17,7 +17,7 @@
 
             <div class="content-aside-grid">
                 <div>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Editor</p><h3>文章主稿（中文 / 国内渠道）</h3><p>只维护一份可信中文主稿。发布到国内渠道时自动使用本节内容。</p></div><span class="card-badge" th:text="|版本 ${article.currentVersion}|">版本 1</span></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">内容编辑</p><h3>文章主稿（中文 / 国内渠道）</h3><p>只维护一份可信中文主稿。发布到国内渠道时自动使用本节内容。</p></div><span class="card-badge" th:text="|版本 ${article.currentVersion}|">版本 1</span></div>
                         <div class="alert warning" th:unless="${article.hasEnglishContent()}">该文章暂无英文版本，发布到国外渠道前请先在下方补充英文标题、摘要和正文。</div>
                         <form class="stack-form" th:action="@{/articles/{id}/edit(id=${article.id})}" th:object="${updateArticleForm}" method="post">
                             <input type="hidden" th:field="*{expectedVersion}"><div class="field"><label>文章标题</label><input th:field="*{title}" maxlength="500" required th:readonly="${!editable or !canEdit}"></div>
@@ -38,12 +38,12 @@
                         </form>
                     </section>
 
-                    <section class="card" th:if="${canAdmin}"><div class="card-header"><div><p class="section-kicker">Review gate</p><h3>内容审核</h3><p>审核通过后主稿锁定，并开放 API 发布与人工跳转发布。</p></div></div>
+                    <section class="card" th:if="${canAdmin}"><div class="card-header"><div><p class="section-kicker">内容审核</p><h3>内容审核</h3><p>审核通过后主稿锁定，并开放 API 发布与人工跳转发布。</p></div></div>
                         <div class="grid-2"><div><form th:action="@{/articles/{id}/approve(id=${article.id})}" method="post"><button class="primary-button" type="submit">审核通过并进入发布</button></form></div>
                             <form class="stack-form" th:action="@{/articles/{id}/reject(id=${article.id})}" th:object="${rejectArticleForm}" method="post"><div class="field"><label>驳回原因</label><textarea th:field="*{reason}" rows="2" maxlength="500" required></textarea></div><button class="danger-button" type="submit">驳回修改</button></form></div>
                     </section>
 
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Manual destinations</p><h3>跳转登录发布</h3>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">人工发布</p><h3>跳转登录发布</h3>
                         <p>系统已按渠道生成正确格式。进入工作区后可复制标题与正文，再打开平台登录发布页并回填发布链接。</p></div><span class="card-badge" th:text="${manualTargets.size()}">0</span></div>
                         <div class="alert warning" th:if="${article.status.name() != 'APPROVED' and article.status.name() != 'PUBLISHED'}">文章审核通过后才能进入平台适配与发布工作区。</div>
                         <div class="channel-grid"><article class="channel-card" th:each="channel : ${manualTargets}">
@@ -55,22 +55,22 @@
                             </div></article></div>
                     </section>
 
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Version history</p><h3>不可变版本记录</h3></div><span class="count-badge" th:text="${versions.size()}">1</span></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">版本记录</p><h3>不可变版本记录</h3></div><span class="count-badge" th:text="${versions.size()}">1</span></div>
                         <div class="table-wrap"><table><thead><tr><th>版本</th><th>标题</th><th>创建人</th><th>创建时间</th></tr></thead><tbody><tr th:each="version : ${versions}">
                             <td th:text="${version.versionNumber}">1</td><td th:text="${version.title}">title</td><td th:text="${version.createdBy}">admin</td><td th:text="${version.createdAt}">time</td></tr></tbody></table></div></section>
                 </div>
 
                 <aside class="sticky-column">
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Content source</p><h3>文章来源</h3></div><span class="format-badge" th:text="${article.sourceType}">GIT</span></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">内容来源</p><h3>文章来源</h3></div><span class="format-badge" th:text="${article.sourceType}">GIT</span></div>
                         <div th:if="${article.sourceType.name() == 'GIT'}"><p>基于 Git 仓库快照生成。</p><small class="mono" th:text="${article.sourceRevision}">revision</small></div>
                         <div th:if="${article.sourceType.name() == 'TOPIC'}"><strong th:text="${article.origin.title}">主题</strong><p th:text="${article.origin.description}">描述</p><small th:text="|${article.origin.articleType} · ${article.origin.knowledgeLevel} · ${article.origin.audience}|">meta</small></div>
                         <div th:if="${article.sourceType.name() == 'WEBSITE'}"><strong th:text="${article.origin.title}">网站</strong><p th:text="${article.origin.description}">推荐角度</p><a class="text-link" th:href="${article.origin.sourceUrl}" target="_blank" rel="noopener noreferrer">访问来源网站 ↗</a></div></section>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Publishing tags</p><h3>发布标签</h3></div></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">发布标签</p><h3>发布标签</h3></div></div>
                         <div class="tag-row"><span class="tag" th:each="tag : ${article.tags}" th:text="${tag}">tag</span><span th:if="${#lists.isEmpty(article.tags)}">暂无标签</span></div></section>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Recommended keywords</p><h3>推荐关键词</h3></div></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">推荐关键词</p><h3>推荐关键词</h3></div></div>
                         <div class="tag-row"><span class="tag" th:each="keyword : ${article.keywords}" th:text="${keyword}">keyword</span><span th:if="${#lists.isEmpty(article.keywords)}">暂无推荐关键词</span></div></section>
 
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">API publishing</p><h3>一键多平台发布</h3><p>勾选多个账号后一次提交；系统按平台独立适配并拆分任务，单个平台失败可单独重试。</p></div></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">接口发布</p><h3>一键多平台发布</h3><p>勾选多个账号后一次提交；系统按平台独立适配并拆分任务，单个平台失败可单独重试。</p></div></div>
                         <div class="alert warning" th:if="${#lists.isEmpty(channelAccounts)}">尚未配置 API 渠道。前往 <a class="text-link" th:href="@{/channels}">渠道管理</a>添加账号。</div>
                         <form class="stack-form" th:if="${canEdit and !#lists.isEmpty(channelAccounts)}" th:action="@{/articles/{id}/publication-batches(id=${article.id})}" th:object="${batchPublishArticleForm}" method="post">
                             <input type="hidden" th:field="*{idempotencyKey}"><div class="field"><label>发布账号（可多选）</label><div class="compact-list">
@@ -81,7 +81,7 @@
                         </form>
                     </section>
 
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">Publication log</p><h3>统一发布记录</h3><p>同时显示 API 与人工发布结果。</p></div><span class="count-badge" th:text="${publicationRecords.size()}">0</span></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">发布记录</p><h3>统一发布记录</h3><p>同时显示 API 与人工发布结果。</p></div><span class="count-badge" th:text="${publicationRecords.size()}">0</span></div>
                         <div class="empty-state" th:if="${#lists.isEmpty(publicationRecords)}">暂无发布记录。</div><div class="compact-list" th:unless="${#lists.isEmpty(publicationRecords)}">
                             <div class="compact-item" th:each="item : ${publicationRecords}"><span><strong th:text="${channelNames.get(item.channelType)}">平台</strong><small th:text="|${item.method} · ${item.updatedAt}|">time</small></span><span>
                                 <a class="text-link" th:if="${item.externalUrl != null}" th:href="${item.externalUrl}" target="_blank" rel="noopener noreferrer">结果 ↗</a><span class="status-pill" th:classappend="| status-${item.status.name().toLowerCase()}|" th:text="${item.status}">PUBLISHED</span></span></div></div>

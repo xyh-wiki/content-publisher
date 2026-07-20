@@ -8,7 +8,7 @@
     <aside th:replace="~{fragments/app-shell :: sidebar('projects')}"></aside>
     <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('项目与内容', '从多种来源创建、管理并发布内容')}"></header>
         <main class="page-content projects-page">
-            <section class="page-header projects-page-header"><div><p class="section-kicker">Content workspace</p><h2>项目与内容</h2>
+            <section class="page-header projects-page-header"><div><p class="section-kicker">内容工作区</p><h2>项目与内容</h2>
                 <p>在一个工作区中选择内容来源、发起生成任务，并持续跟踪项目、任务和文章状态。</p></div>
                 <div class="header-actions"><a class="secondary-link" th:href="@{/publishing}">查看发布进度</a></div></section>
 
@@ -25,7 +25,7 @@
             <div class="alert warning" th:if="${!aiEnabled and !canAdmin}">AI 内容生成尚未启用，请联系租户管理员完成配置。</div>
 
             <section class="source-workspace" th:if="${canEdit}" data-source-workspace th:attr="data-default-source=${activeSourcePanel}">
-                <div class="source-workspace-heading"><div><p class="section-kicker">Create content</p><h3>创建新内容</h3><p>选择一种来源，仅显示当前需要填写的内容，减少页面滚动和表单干扰。</p></div>
+                <div class="source-workspace-heading"><div><p class="section-kicker">创建内容</p><h3>创建新内容</h3><p>选择一种来源，仅显示当前需要填写的内容，减少页面滚动和表单干扰。</p></div>
                     <span class="service-badge" th:classappend="${aiEnabled} ? ' online' : ' offline'" th:text="${aiEnabled} ? 'AI 已就绪' : 'AI 未配置'">AI 状态</span></div>
                 <div class="source-tabs" role="tablist" aria-label="内容来源">
                     <button type="button" class="source-tab" th:classappend="${activeSourcePanel == 'git'} ? ' active'" data-source-tab="git" role="tab" aria-controls="source-panel-git" th:attr="aria-selected=${activeSourcePanel == 'git'}">
@@ -37,7 +37,7 @@
                 </div>
 
                 <div id="source-panel-git" class="source-panel" data-source-panel="git" role="tabpanel" th:hidden="${activeSourcePanel != 'git'}">
-                    <div class="source-panel-intro"><div><p class="section-kicker">Repository import</p><h3>导入 Git 项目</h3><p>支持允许列表内的 GitHub、GitLab 和 Gitee HTTPS 仓库，导入任务会在后台完成克隆与事实分析。</p></div><span class="service-badge">HTTPS only</span></div>
+                    <div class="source-panel-intro"><div><p class="section-kicker">仓库导入</p><h3>导入 Git 项目</h3><p>支持允许列表内的 GitHub、GitLab 和 Gitee HTTPS 仓库，导入任务会在后台完成克隆与事实分析。</p></div><span class="service-badge">仅 HTTPS</span></div>
                     <form class="inline-form source-quick-form" th:action="@{/projects/imports}" th:object="${importProjectForm}" method="post">
                         <input type="hidden" th:field="*{idempotencyKey}">
                         <div class="field grow"><label for="gitUrl">仓库地址</label><input id="gitUrl" th:field="*{gitUrl}" type="url" maxlength="2048" placeholder="https://github.com/owner/repository.git" required>
@@ -49,7 +49,7 @@
                 </div>
 
                 <div id="source-panel-topic" class="source-panel" data-source-panel="topic" role="tabpanel" th:hidden="${activeSourcePanel != 'topic'}">
-                    <div class="source-panel-intro"><div><p class="section-kicker">Topic brief</p><h3>按主题创建知识教程</h3><p>定义学习目标与目标受众，AI 会生成包含步骤、示例、常见问题和总结的可审核主稿。</p></div><span class="service-badge">AI controlled</span></div>
+                    <div class="source-panel-intro"><div><p class="section-kicker">主题创作</p><h3>按主题创建知识教程</h3><p>定义学习目标与目标受众，系统会生成包含步骤、示例、常见问题和总结的可审核主稿。</p></div><span class="service-badge">AI 辅助</span></div>
                     <form class="stack-form" th:action="@{/articles/topic-generations}" th:object="${topicArticleForm}" method="post">
                         <input type="hidden" th:field="*{idempotencyKey}">
                         <div class="form-grid"><div class="field"><label>创作主题</label><input th:field="*{topic}" maxlength="300" placeholder="例如：Spring Boot 生产环境可观测性" required><small class="field-error" th:if="${#fields.hasErrors('topic')}" th:errors="*{topic}"></small></div>
@@ -68,7 +68,7 @@
                 </div>
 
                 <div id="source-panel-website" class="source-panel" data-source-panel="website" role="tabpanel" th:hidden="${activeSourcePanel != 'website'}">
-                    <div class="source-panel-intro"><div><p class="section-kicker">Website recommendation</p><h3>从网站生成推荐文章</h3><p>安全读取公开网页并提炼定位、功能、适用人群、优势与局限，不执行网页中的提示指令。</p></div><span class="service-badge">Public HTTPS</span></div>
+                    <div class="source-panel-intro"><div><p class="section-kicker">网站推荐</p><h3>从网站生成推荐文章</h3><p>安全读取公开网页并提炼定位、功能、适用人群、优势与局限，不执行网页中的提示指令。</p></div><span class="service-badge">公网 HTTPS</span></div>
                     <form class="stack-form" th:action="@{/articles/website-generations}" th:object="${websiteArticleForm}" method="post">
                         <input type="hidden" th:field="*{idempotencyKey}">
                         <div class="field"><label>公开网站链接</label><input th:field="*{websiteUrl}" type="url" maxlength="2048" placeholder="https://example.com" required><small>只允许公网 HTTPS；不跟随重定向，不抓取登录后页面。</small></div>
@@ -82,7 +82,7 @@
             </section>
 
             <div class="projects-overview-grid">
-                <section class="card project-table-card"><div class="card-header"><div><p class="section-kicker">Repositories</p><h3>已接入 Git 项目</h3><p>查看仓库分析状态、默认分支和主要技术栈。</p></div><span class="count-badge" th:text="${projects.size()}">0</span></div>
+                <section class="card project-table-card"><div class="card-header"><div><p class="section-kicker">项目列表</p><h3>已接入 Git 项目</h3><p>查看仓库分析状态、默认分支和主要技术栈。</p></div><span class="count-badge" th:text="${projects.size()}">0</span></div>
                     <div class="empty-state" th:if="${#lists.isEmpty(projects)}">还没有项目。通过上方“Git 项目”来源导入第一个仓库。</div>
                     <div class="table-wrap" th:unless="${#lists.isEmpty(projects)}"><table><thead><tr><th>项目</th><th>状态</th><th>分支</th><th>技术栈</th><th>更新时间</th></tr></thead>
                         <tbody><tr th:each="project : ${projects}"><td><a class="table-title" th:href="@{/projects/{id}(id=${project.id})}" th:text="${project.name}">project</a><small th:text="${project.gitUrl}">url</small></td>
@@ -91,11 +91,11 @@
                 </section>
 
                 <aside class="overview-sidebar">
-                    <section class="card overview-card"><div class="card-header"><div><p class="section-kicker">Jobs</p><h3>近期任务</h3></div><span class="count-badge" th:text="${jobs.size()}">0</span></div>
+                    <section class="card overview-card"><div class="card-header"><div><p class="section-kicker">任务列表</p><h3>近期任务</h3></div><span class="count-badge" th:text="${jobs.size()}">0</span></div>
                         <div class="empty-state compact" th:if="${#lists.isEmpty(jobs)}">暂无任务。</div><div class="compact-list overview-scroll" th:unless="${#lists.isEmpty(jobs)}">
                             <a class="compact-item" th:each="job : ${jobs}" th:href="@{/jobs/{id}(id=${job.id})}"><span><strong th:text="${job.type}">TYPE</strong><small th:text="${job.updatedAt}">time</small></span>
                                 <span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${job.status}">PENDING</span></a></div></section>
-                    <section class="card overview-card"><div class="card-header"><div><p class="section-kicker">Content</p><h3>最近文章</h3></div><a class="text-link" th:href="@{/publishing}">发布中心</a></div>
+                    <section class="card overview-card"><div class="card-header"><div><p class="section-kicker">内容列表</p><h3>最近文章</h3></div><a class="text-link" th:href="@{/publishing}">发布中心</a></div>
                         <div class="empty-state compact" th:if="${#lists.isEmpty(articles)}">暂无文章。</div><div class="compact-list overview-scroll" th:unless="${#lists.isEmpty(articles)}">
                             <a class="compact-item" th:each="article : ${articles}" th:href="@{/articles/{id}(id=${article.id})}"><span><strong th:text="${article.title}">标题</strong><small th:text="|v${article.currentVersion} · ${article.language}|">版本</small></span>
                                 <span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></a></div></section>
