@@ -106,4 +106,31 @@
         source?.addEventListener('input', refresh);
         refresh();
     });
+
+    const monitorScreen = document.querySelector('[data-monitor-screen]');
+    if (monitorScreen) {
+        const clock = monitorScreen.querySelector('[data-monitor-clock]');
+        const countdown = monitorScreen.querySelector('[data-monitor-countdown]');
+        const refreshSeconds = Number(monitorScreen.dataset.refreshSeconds || 60);
+        let remaining = refreshSeconds;
+        const tick = () => {
+            if (clock) clock.textContent = new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+            remaining -= 1;
+            if (remaining <= 0) window.location.reload();
+            if (countdown) countdown.textContent = String(Math.max(remaining, 0));
+        };
+        window.setInterval(tick, 1000);
+        tick();
+        monitorScreen.querySelector('[data-monitor-refresh-now]')?.addEventListener('click', () => {
+            window.location.reload();
+        });
+        monitorScreen.querySelector('[data-monitor-fullscreen]')?.addEventListener('click', async () => {
+            try {
+                if (document.fullscreenElement) await document.exitFullscreen();
+                else await document.documentElement.requestFullscreen();
+            } catch (_error) {
+                // Browsers may deny fullscreen when the page is embedded.
+            }
+        });
+    }
 })();

@@ -72,6 +72,11 @@ class LocalSecurityIntegrationTest {
         mockMvc.perform(get("/").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("tenant-local")));
+        mockMvc.perform(get("/monitoring").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("全链路监控大屏")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-screen")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("发布成功率")));
         mockMvc.perform(get("/api/v1/projects/" + UUID.randomUUID()).session(session))
                 .andExpect(status().isNotFound());
     }

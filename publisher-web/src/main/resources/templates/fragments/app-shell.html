@@ -15,6 +15,9 @@
         <a th:href="@{/}" th:classappend="${active == 'dashboard'} ? ' active'">
             <span class="nav-icon">⌂</span><span>总览</span>
         </a>
+        <a th:href="@{/monitoring}" th:classappend="${active == 'monitoring'} ? ' active'">
+            <span class="nav-icon">▦</span><span>监控大屏</span>
+        </a>
         <a th:href="@{/projects}" th:classappend="${active == 'projects'} ? ' active'">
             <span class="nav-icon">◇</span><span>项目与内容</span>
         </a>
