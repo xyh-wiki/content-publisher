@@ -19,7 +19,7 @@
             <span class="nav-icon">▦</span><span>监控大屏</span>
         </a>
         <a th:href="@{/projects}" th:classappend="${active == 'projects'} ? ' active'">
-            <span class="nav-icon">◇</span><span>项目与内容</span>
+            <span class="nav-icon">◇</span><span>内容工作台</span>
         </a>
         <a th:href="@{/publishing}" th:classappend="${active == 'publishing'} ? ' active'">
             <span class="nav-icon">↗</span><span>发布中心</span>
@@ -45,7 +45,7 @@
 <header class="app-topbar" th:fragment="topbar(title, subtitle)">
     <button class="menu-button" type="button" data-sidebar-open aria-label="打开导航">☰</button>
     <div><h1 th:text="${title}">页面标题</h1><p th:text="${subtitle}">页面说明</p></div>
-    <div class="topbar-actions"><span class="environment-dot"></span><span>生产环境</span></div>
+    <div class="topbar-actions"><span class="environment-dot"></span><span>服务运行中</span></div>
 </header>
 </body>
 </html>
