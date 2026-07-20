@@ -37,8 +37,13 @@ class DurableJobWorkerTest {
         AuditRecorder audits = mock(AuditRecorder.class);
         Job job = runningJob(1, 3);
         when(jobs.claimNext(anyString(), any(), any())).thenReturn(Optional.of(job));
-        when(projects.importProject(any(), anyString(), any()))
-                .thenThrow(new ApplicationException("GIT_IMPORT_FAILED", "temporary"));
+        when(projects.importProject(any(), anyString(), any(), any())).thenAnswer(invocation -> {
+            io.contentpublisher.platform.application.JobProgressReporter progress = invocation.getArgument(3);
+            progress.update(35, "读取仓库", "正在读取公开仓库内容");
+            throw new ApplicationException("GIT_IMPORT_FAILED", "temporary");
+        });
+        when(jobs.updateProgress(eq(job.id()), anyString(), eq(35), eq("读取仓库"),
+                eq("正在读取公开仓库内容"), eq(NOW))).thenReturn(true);
         when(jobs.markRetryWaiting(eq(job.id()), anyString(), any(), eq("GIT_IMPORT_FAILED"),
                 eq("temporary"), eq(NOW))).thenReturn(true);
 
@@ -46,6 +51,8 @@ class DurableJobWorkerTest {
 
         verify(jobs).markRetryWaiting(eq(job.id()), anyString(), eq(NOW.plusSeconds(10)),
                 eq("GIT_IMPORT_FAILED"), eq("temporary"), eq(NOW));
+        verify(jobs).updateProgress(eq(job.id()), anyString(), eq(35), eq("读取仓库"),
+                eq("正在读取公开仓库内容"), eq(NOW));
         verify(jobs, never()).markFailed(any(), anyString(), anyString(), anyString(), any());
     }
 
@@ -56,7 +63,7 @@ class DurableJobWorkerTest {
         AuditRecorder audits = mock(AuditRecorder.class);
         Job job = runningJob(3, 3);
         when(jobs.claimNext(anyString(), any(), any())).thenReturn(Optional.of(job));
-        when(projects.importProject(any(), anyString(), any()))
+        when(projects.importProject(any(), anyString(), any(), any()))
                 .thenThrow(new ApplicationException("GIT_IMPORT_FAILED", "temporary"));
         when(jobs.markFailed(eq(job.id()), anyString(), eq("GIT_IMPORT_FAILED"), eq("temporary"), eq(NOW)))
                 .thenReturn(true);
@@ -77,7 +84,8 @@ class DurableJobWorkerTest {
     private Job runningJob(int attempt, int maxAttempts) {
         return new Job(UUID.randomUUID(), "tenant-worker", "editor", JobType.IMPORT_PROJECT, JobStatus.RUNNING,
                 new JobPayload.ImportProject("https://github.com/contentpublisher/platform.git", null),
-                "worker-test-001", "a".repeat(64), attempt, maxAttempts, NOW, NOW, "worker-old",
+                "worker-test-001", "a".repeat(64), attempt, maxAttempts, 12, "任务已领取", "准备执行", null,
+                NOW, NOW, "worker-old",
                 null, null, null, NOW, NOW);
     }
 }

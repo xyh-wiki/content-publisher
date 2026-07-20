@@ -1,6 +1,7 @@
 package io.contentpublisher.platform.infrastructure.jobs;
 
 import io.contentpublisher.platform.application.ApplicationException;
+import io.contentpublisher.platform.application.JobProgressReporter;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.port.AuditRecorder;
@@ -59,28 +60,29 @@ public class DurableJobWorker {
 
     private void execute(Job job) {
         ActorContext actor = new ActorContext(job.tenantId(), job.actorSubject());
+        JobProgressReporter progress = progressReporter(job);
         try {
             UUID resultId = switch (job.type()) {
                 case IMPORT_PROJECT -> {
                     JobPayload.ImportProject payload = (JobPayload.ImportProject) job.payload();
-                    yield projects.importProject(actor, payload.gitUrl(), payload.branch()).id();
+                    yield projects.importProject(actor, payload.gitUrl(), payload.branch(), progress).id();
                 }
                 case GENERATE_ARTICLE -> {
                     JobPayload.GenerateArticle payload = (JobPayload.GenerateArticle) job.payload();
-                    yield projects.generateArticle(actor, payload.projectId(), payload.policy(), job.id()).id();
+                    yield projects.generateArticle(actor, payload.projectId(), payload.policy(), job.id(), progress).id();
                 }
                 case GENERATE_TOPIC_ARTICLE -> {
                     JobPayload.GenerateTopicArticle payload = (JobPayload.GenerateTopicArticle) job.payload();
-                    yield projects.generateTopicArticle(actor, payload.brief(), payload.policy(), job.id()).id();
+                    yield projects.generateTopicArticle(actor, payload.brief(), payload.policy(), job.id(), progress).id();
                 }
                 case GENERATE_WEBSITE_ARTICLE -> {
                     JobPayload.GenerateWebsiteArticle payload = (JobPayload.GenerateWebsiteArticle) job.payload();
-                    yield projects.generateWebsiteArticle(actor, payload.brief(), payload.policy(), job.id()).id();
+                    yield projects.generateWebsiteArticle(actor, payload.brief(), payload.policy(), job.id(), progress).id();
                 }
                 case PUBLISH_ARTICLE -> {
                     JobPayload.PublishArticle payload = (JobPayload.PublishArticle) job.payload();
                     yield publishing.publish(actor, payload.articleId(), payload.channelAccountId(),
-                            payload.canonicalUrl(), job.id()).id();
+                            payload.canonicalUrl(), job.id(), progress).id();
                 }
             };
             Instant completedAt = clock.instant();
@@ -95,6 +97,16 @@ public class DurableJobWorker {
             log.error("Unexpected job execution failure jobId={} type={}", job.id(), job.type(), exception);
             handleFailure(job, actor, "INTERNAL_JOB_ERROR", "任务执行发生内部错误", false);
         }
+    }
+
+    private JobProgressReporter progressReporter(Job job) {
+        return (percent, label, detail) -> {
+            boolean updated = jobs.updateProgress(job.id(), workerId, percent, label, detail, clock.instant());
+            if (!updated) {
+                log.warn("Job progress update skipped because lease is no longer owned jobId={} workerId={}",
+                        job.id(), workerId);
+            }
+        };
     }
 
     private void handleFailure(Job job, ActorContext actor, String code, String message, boolean retryable) {

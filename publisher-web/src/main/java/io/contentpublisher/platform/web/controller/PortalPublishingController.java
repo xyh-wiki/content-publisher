@@ -15,6 +15,7 @@ import io.contentpublisher.platform.web.form.PublishArticleForm;
 import io.contentpublisher.platform.web.dto.ChannelAccountView;
 import io.contentpublisher.platform.web.dto.PublicationMatrixCell;
 import io.contentpublisher.platform.web.dto.PublicationMatrixRow;
+import io.contentpublisher.platform.web.dto.PublicationBatchView;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import jakarta.validation.Valid;
 import org.springframework.stereotype.Controller;
@@ -53,6 +54,8 @@ public class PortalPublishingController {
         var actor = actors.currentActor();
         var articles = projects.listArticles(actor, 50);
         var records = publishing.listPublicationRecords(actor, 100);
+        var accountViews = publishing.listAccounts(actor).stream().map(ChannelAccountView::from).toList();
+        var channelNames = channelNames();
         var matrixRecords = publishing.listPublicationRecordsForArticles(actor,
                 articles.stream().map(article -> article.id()).toList());
         Map<ArticleChannelKey, PublicationRecord> latest = new java.util.HashMap<>();
@@ -63,9 +66,18 @@ public class PortalPublishingController {
                         latest.get(new ArticleChannelKey(article.id(), channel.type())))).toList())).toList();
         Map<UUID, String> articleNames = new java.util.HashMap<>();
         articles.forEach(article -> articleNames.put(article.id(), article.title()));
+        Map<UUID, ChannelAccountView> accountsById = new java.util.HashMap<>();
+        accountViews.forEach(account -> accountsById.put(account.id(), account));
+        var publicationBatches = PublicationBatchView.aggregate(jobs.listJobs(actor, 100), articleNames,
+                accountsById, channelNames);
         model.addAttribute("articles", articles);
-        model.addAttribute("accounts", publishing.listAccounts(actor).stream().map(ChannelAccountView::from).toList());
+        model.addAttribute("accounts", accountViews);
         model.addAttribute("publicationRecords", records);
+        model.addAttribute("publicationBatches", publicationBatches);
+        model.addAttribute("activeBatchCount", publicationBatches.stream()
+                .filter(batch -> batch.activeCount() > 0).count());
+        model.addAttribute("failedBatchCount", publicationBatches.stream()
+                .filter(batch -> batch.failedCount() > 0).count());
         model.addAttribute("publicationMatrix", matrix);
         model.addAttribute("articleNames", articleNames);
         model.addAttribute("publishedCount", records.stream()
@@ -77,7 +89,7 @@ public class PortalPublishingController {
         model.addAttribute("manualRecordCount", records.stream()
                 .filter(record -> record.method().name().equals("MANUAL")).count());
         model.addAttribute("manualTargets", ChannelCatalog.manualOnly());
-        model.addAttribute("channelNames", channelNames());
+        model.addAttribute("channelNames", channelNames);
         return "publishing";
     }
 
@@ -148,6 +160,22 @@ public class PortalPublishingController {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
         }
         return "redirect:/articles/" + articleId;
+    }
+
+    @PostMapping("/jobs/{jobId}/publication-retry")
+    public String retryPublication(@PathVariable UUID jobId,
+                                   @org.springframework.web.bind.annotation.RequestParam String idempotencyKey,
+                                   RedirectAttributes redirectAttributes) {
+        try {
+            var retried = jobs.retryFailedPublication(actors.currentActor(), jobId, idempotencyKey);
+            redirectAttributes.addFlashAttribute("success", "失败平台已重新提交，任务进度将在批次看板中更新");
+            return retried.batchId() == null
+                    ? "redirect:/jobs/" + retried.id()
+                    : "redirect:/publishing#batch-" + retried.batchId();
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+            return "redirect:/publishing";
+        }
     }
 
     @GetMapping("/articles/{articleId}/manual/{channelType}")

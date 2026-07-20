@@ -54,17 +54,24 @@ class DurableJobIntegrationTest {
         Instant created = Instant.parse("2026-07-20T00:00:00Z");
         Job pending = new Job(UUID.randomUUID(), "tenant-state", "editor", JobType.IMPORT_PROJECT,
                 JobStatus.PENDING, new JobPayload.ImportProject("https://github.com/contentpublisher/platform.git", null),
-                "state-machine-001", "a".repeat(64), 0, 3, created, null, null, null,
+                "state-machine-001", "a".repeat(64), 0, 3, 5, "等待执行", "等待后台工作器领取", null,
+                created, null, null, null,
                 null, null, created, created);
         jobs.save(pending);
 
         Job claimed = jobs.claimNext("worker-a", created.plusSeconds(1), created.minusSeconds(300)).orElseThrow();
         assertThat(claimed.status()).isEqualTo(JobStatus.RUNNING);
         assertThat(claimed.attempt()).isEqualTo(1);
+        assertThat(claimed.progressPercent()).isEqualTo(12);
+        assertThat(jobs.updateProgress(claimed.id(), "worker-a", 55, "生成内容", "正在调用内容生成服务",
+                created.plusSeconds(2))).isTrue();
+        Job progressing = jobs.findJobById("tenant-state", pending.id()).orElseThrow();
+        assertThat(progressing.progressPercent()).isEqualTo(55);
+        assertThat(progressing.progressLabel()).isEqualTo("生成内容");
 
         Instant retryAt = created.plusSeconds(20);
         assertThat(jobs.markRetryWaiting(claimed.id(), "worker-a", retryAt,
-                "AI_REQUEST_FAILED", "temporary", created.plusSeconds(2))).isTrue();
+                "AI_REQUEST_FAILED", "temporary", created.plusSeconds(3))).isTrue();
         assertThat(jobs.claimNext("worker-b", created.plusSeconds(10), created.minusSeconds(300))).isEmpty();
 
         Job retried = jobs.claimNext("worker-b", retryAt, created.minusSeconds(300)).orElseThrow();
@@ -74,6 +81,8 @@ class DurableJobIntegrationTest {
 
         Job completed = jobs.findJobById("tenant-state", pending.id()).orElseThrow();
         assertThat(completed.status()).isEqualTo(JobStatus.SUCCEEDED);
+        assertThat(completed.progressPercent()).isEqualTo(100);
+        assertThat(completed.progressLabel()).isEqualTo("执行完成");
         assertThat(completed.resultResourceId()).isEqualTo(resultId);
     }
 
@@ -82,7 +91,8 @@ class DurableJobIntegrationTest {
         Instant created = Instant.parse("2026-07-20T00:00:00Z");
         Job abandoned = new Job(UUID.randomUUID(), "tenant-expired", "editor", JobType.IMPORT_PROJECT,
                 JobStatus.RUNNING, new JobPayload.ImportProject("https://github.com/contentpublisher/platform.git", null),
-                "expired-lease-001", "b".repeat(64), 3, 3, created, created, "dead-worker",
+                "expired-lease-001", "b".repeat(64), 3, 3, 88, "正在分析仓库", "读取仓库内容", null,
+                created, created, "dead-worker",
                 null, null, null, created, created);
         jobs.save(abandoned);
 
@@ -107,6 +117,7 @@ class DurableJobIntegrationTest {
     private Job pendingPublication(String tenantId, String idempotencyKey, Instant created) {
         return new Job(UUID.randomUUID(), tenantId, "editor", JobType.PUBLISH_ARTICLE, JobStatus.PENDING,
                 new JobPayload.PublishArticle(UUID.randomUUID(), UUID.randomUUID(), null), idempotencyKey,
-                "c".repeat(64), 0, 3, created, null, null, null, null, null, created, created);
+                "c".repeat(64), 0, 3, 5, "等待执行", "等待后台工作器领取", UUID.randomUUID(),
+                created, null, null, null, null, null, created, created);
     }
 }

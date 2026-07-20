@@ -4,6 +4,9 @@ import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.Job;
+import io.contentpublisher.platform.domain.JobPayload;
+import io.contentpublisher.platform.domain.JobStatus;
+import io.contentpublisher.platform.domain.JobType;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
@@ -85,7 +88,39 @@ class JobApplicationServiceTest {
 
         assertThat(first).hasSize(2).extracting(Job::idempotencyKey)
                 .allMatch(key -> key.startsWith("publication-batch:"));
+        assertThat(first).extracting(Job::batchId).doesNotContainNull().containsOnly(first.get(0).batchId());
         assertThat(repeated).extracting(Job::id).containsExactlyElementsOf(first.stream().map(Job::id).toList());
         assertThat(stored).hasSize(2);
+    }
+
+    @Test
+    void shouldRetryOnlyFailedAccountWithinOriginalPublicationBatch() {
+        JobRepository jobs = mock(JobRepository.class);
+        ProjectApplicationService projects = mock(ProjectApplicationService.class);
+        PublishingApplicationService publishing = mock(PublishingApplicationService.class);
+        AuditRecorder audits = mock(AuditRecorder.class);
+        Instant now = Instant.parse("2026-07-20T00:00:00Z");
+        UUID failedJobId = UUID.randomUUID();
+        UUID batchId = UUID.randomUUID();
+        UUID articleId = UUID.randomUUID();
+        UUID accountId = UUID.randomUUID();
+        Job failed = new Job(failedJobId, "tenant", "editor", JobType.PUBLISH_ARTICLE, JobStatus.FAILED,
+                new JobPayload.PublishArticle(articleId, accountId, "https://example.com/original"),
+                "old-publication-job", "d".repeat(64), 4, 4, 100, "执行失败", "平台调用失败", batchId,
+                now, null, null, null, "CHANNEL_FAILED", "平台调用失败", now, now);
+        when(jobs.findJobById("tenant", failedJobId)).thenReturn(Optional.of(failed));
+        when(jobs.findByIdempotencyKey("tenant", "publication-retry-001")).thenReturn(Optional.empty());
+        when(jobs.createIfWithinQuota(any(Job.class), anyInt()))
+                .thenAnswer(invocation -> Optional.of(invocation.getArgument(0)));
+        JobApplicationService service = new JobApplicationService(jobs, projects, publishing, audits,
+                Clock.fixed(now, ZoneOffset.UTC), 20, 4);
+
+        Job retried = service.retryFailedPublication(new ActorContext("tenant", "editor"), failedJobId,
+                "publication-retry-001");
+
+        assertThat(retried.status()).isEqualTo(JobStatus.PENDING);
+        assertThat(retried.batchId()).isEqualTo(batchId);
+        assertThat(retried.progressPercent()).isEqualTo(5);
+        assertThat(retried.payload()).isEqualTo(failed.payload());
     }
 }

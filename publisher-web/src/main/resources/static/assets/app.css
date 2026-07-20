@@ -256,6 +256,32 @@ thead .matrix-article-column { z-index: 3; background: #fafbfc; }
 .method-api { color: #4b4fc4; background: var(--primary-soft); }
 .method-manual { color: #89580a; background: var(--amber-soft); }
 .record-error { display: inline-block; max-width: 260px; color: var(--danger); font-size: 10px; line-height: 1.45; }
+.publication-batches { overflow: hidden; }
+.publication-batch-list { display: grid; gap: 14px; }
+.publication-batch { padding: 17px; border: 1px solid var(--line); border-radius: 13px; background: linear-gradient(180deg,#fcfdff,#fff); scroll-margin-top: 90px; }
+.publication-batch:target { border-color: #b8bbf3; box-shadow: 0 0 0 4px var(--primary-soft); }
+.publication-batch > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.publication-batch > header small { display: block; margin-top: 5px; color: var(--muted); }
+.batch-summary { display: flex; align-items: center; gap: 10px; }
+.batch-summary > strong { color: var(--primary); font-size: 21px; letter-spacing: -.035em; }
+.job-progress-track.compact { height: 8px; margin-top: 14px; }
+.batch-counts { display: flex; flex-wrap: wrap; gap: 16px; margin: 11px 0 14px; color: var(--muted); font-size: 9px; }
+.batch-counts strong { margin-left: 3px; color: var(--text); }
+.batch-items { display: grid; gap: 7px; }
+.batch-item { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 8px 14px; padding: 10px 11px; border-radius: 10px; background: var(--surface-soft); }
+.batch-item > div:first-child { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.batch-item > div:first-child span, .batch-item > div:first-child strong, .batch-item > div:first-child small { display: block; min-width: 0; }
+.batch-item > div:first-child strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.batch-item > div:first-child small { margin-top: 3px; color: var(--muted); }
+.batch-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #a5afbf; }
+.batch-dot.status-running, .batch-dot.status-pending, .batch-dot.status-retry_wait { background: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); }
+.batch-dot.status-succeeded { background: var(--teal); box-shadow: 0 0 0 4px var(--teal-soft); }
+.batch-dot.status-failed { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+.batch-item-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.batch-item-actions form { margin: 0; }
+.mini-button { min-height: 30px; padding: 0 10px; border: 1px solid #d8c4c9; border-radius: 8px; color: #a3314b; background: white; cursor: pointer; font-size: 9px; font-weight: 800; }
+.mini-button:hover { border-color: var(--danger); background: var(--danger-soft); }
+.batch-item > .record-error { grid-column: 1 / -1; max-width: none; margin: 0 0 0 17px; }
 .manual-editor-grid { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 20px; }
 .copy-toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
 .copy-button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); background: white; cursor: pointer; font-size: 10px; font-weight: 750; }
@@ -505,6 +531,8 @@ thead .matrix-article-column { z-index: 3; background: #fafbfc; }
     .source-workspace-heading, .source-panel-intro { align-items: stretch; flex-direction: column; }
     .job-progress-heading { align-items: stretch; flex-direction: column; gap: 10px; }
     .job-progress-heading > span { font-size: 25px; }
+    .publication-batch > header { align-items: stretch; flex-direction: column; }
+    .batch-summary { justify-content: space-between; }
     .source-tab strong, .source-tab small { white-space: normal; }
     .monitor-heading { align-items: stretch; flex-direction: column; }
     .monitor-controls { justify-content: flex-start; flex-wrap: wrap; }
@@ -522,6 +550,8 @@ thead .matrix-article-column { z-index: 3; background: #fafbfc; }
     .login-card, .password-card, .message-card { padding: 28px 22px; }
     .source-workspace-heading, .source-tabs, .source-panel { padding-left: 17px; padding-right: 17px; }
     .job-progress-steps { grid-template-columns: repeat(2,minmax(0,1fr)); row-gap: 16px; }
+    .batch-item { grid-template-columns: 1fr; }
+    .batch-item-actions { justify-content: flex-start; flex-wrap: wrap; padding-left: 17px; }
     .monitor-content { padding-left: 11px; padding-right: 11px; }
     .monitor-status-strip, .monitor-metric-grid, .monitor-grid-overview, .monitor-grid-detail, .monitor-grid-feed { grid-template-columns: 1fr; }
     .monitor-status-strip > div { border-right: 0; border-bottom: 1px solid rgba(91,139,184,.14); }

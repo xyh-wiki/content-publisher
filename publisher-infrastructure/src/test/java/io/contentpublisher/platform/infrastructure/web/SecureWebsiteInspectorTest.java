@@ -1,5 +1,6 @@
 package io.contentpublisher.platform.infrastructure.web;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.infrastructure.config.WebsiteImportProperties;
 import org.junit.jupiter.api.Test;
@@ -14,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SecureWebsiteInspectorTest {
     private final SecureWebsiteInspector inspector = new SecureWebsiteInspector(
             HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build(),
-            new WebsiteImportProperties(Duration.ofSeconds(2), 2_000_000, 100_000, 20));
+            new WebsiteImportProperties(Duration.ofSeconds(2), 2_000_000, 100_000, 20), new ObjectMapper());
 
     @Test
     void shouldRejectHttpAndPrivateWebsiteAddresses() {
@@ -47,5 +48,24 @@ class SecureWebsiteInspectorTest {
                 "<html><body><div id='app'></div></body></html>"))
                 .isInstanceOfSatisfying(ApplicationException.class,
                         exception -> assertThat(exception.code()).isEqualTo("WEBSITE_CONTENT_REJECTED"));
+    }
+
+    @Test
+    void shouldDiscoverSafePublicApiPathsFromSinglePageApplicationBundle() {
+        String script = "fetch('/api/trending?period=daily');fetch('/api/languages');"
+                + "fetch('/api/admin/fetch');fetch('/api/repositories/')";
+
+        assertThat(inspector.discoverPublicApiPaths(script))
+                .containsExactly("/api/trending", "/api/languages");
+    }
+
+    @Test
+    void shouldExtractReadableTextFromPublicJsonResponse() {
+        String json = """
+                {"code":0,"data":[{"repo_name":"content-publisher","description":"内容生成与多平台发布工具", "tags":["AI","Java"]}]}
+                """;
+
+        assertThat(inspector.extractJsonText(json))
+                .contains("content-publisher", "内容生成与多平台发布工具", "AI", "Java");
     }
 }

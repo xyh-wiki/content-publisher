@@ -26,6 +26,10 @@ class JobEntity {
     @Column(name = "request_hash", nullable = false, length = 64) String requestHash;
     @Column(nullable = false) int attempt;
     @Column(name = "max_attempts", nullable = false) int maxAttempts;
+    @Column(name = "progress_percent", nullable = false) int progressPercent;
+    @Column(name = "progress_label", nullable = false, length = 100) String progressLabel;
+    @Column(name = "progress_detail", nullable = false, length = 500) String progressDetail;
+    @Column(name = "batch_id") UUID batchId;
     @Column(name = "scheduled_at", nullable = false) Instant scheduledAt;
     @Column(name = "locked_at") Instant lockedAt;
     @Column(name = "lock_owner", length = 200) String lockOwner;

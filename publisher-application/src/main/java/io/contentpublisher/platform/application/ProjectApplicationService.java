@@ -55,6 +55,11 @@ public final class ProjectApplicationService {
     }
 
     public Project importProject(ActorContext actor, String gitUrl, String branch) {
+        return importProject(actor, gitUrl, branch, JobProgressReporter.noop());
+    }
+
+    public Project importProject(ActorContext actor, String gitUrl, String branch, JobProgressReporter progress) {
+        progress.update(20, "准备仓库分析", "正在校验仓库地址并创建项目分析记录");
         Instant now = clock.instant();
         Project existing = projects.findByGitUrl(actor.tenantId(), gitUrl).orElse(null);
         UUID id = existing == null ? UUID.randomUUID() : existing.id();
@@ -62,7 +67,9 @@ public final class ProjectApplicationService {
         projects.save(new Project(id, actor.tenantId(), gitUrl, repositoryName(gitUrl), null, branch, null,
                 java.util.List.of(), null, ProjectStatus.ANALYZING, actor.subject(), actor.subject(), createdAt, now));
         try {
+            progress.update(35, "读取仓库内容", "正在拉取代码并读取 README、分支和语言信息");
             RepositorySnapshot snapshot = repositoryInspector.inspect(gitUrl, branch);
+            progress.update(72, "保存仓库快照", "仓库读取完成，正在持久化可验证的项目事实");
             snapshots.save(actor.tenantId(), id, snapshot);
             Project saved = projects.save(new Project(id, actor.tenantId(), gitUrl, snapshot.name(), snapshot.description(),
                     snapshot.defaultBranch(), snapshot.revision(), snapshot.languages(), snapshot.license(),
@@ -70,6 +77,7 @@ public final class ProjectApplicationService {
                     createdAt, clock.instant()));
             auditRecorder.record(actor, "PROJECT_IMPORTED", "PROJECT", id,
                     Map.of("gitHost", java.net.URI.create(gitUrl).getHost(), "revision", snapshot.revision()));
+            progress.update(92, "仓库分析完成", "项目元数据和仓库快照已保存");
             return saved;
         } catch (RuntimeException exception) {
             projects.save(new Project(id, actor.tenantId(), gitUrl, repositoryName(gitUrl), null, branch, null,
@@ -104,9 +112,18 @@ public final class ProjectApplicationService {
     }
 
     public Article generateArticle(ActorContext actor, UUID projectId, GenerationPolicy policy, UUID generationJobId) {
+        return generateArticle(actor, projectId, policy, generationJobId, JobProgressReporter.noop());
+    }
+
+    public Article generateArticle(ActorContext actor, UUID projectId, GenerationPolicy policy, UUID generationJobId,
+                                   JobProgressReporter progress) {
+        progress.update(20, "读取项目事实", "正在读取项目、仓库快照和文章生成约束");
         if (generationJobId != null) {
             Article existing = articles.findByGenerationJobId(actor.tenantId(), generationJobId).orElse(null);
-            if (existing != null) return existing;
+            if (existing != null) {
+                progress.update(92, "复用生成结果", "检测到任务已有文章结果，正在完成状态同步");
+                return existing;
+            }
         }
         Project project = getProject(actor, projectId);
         if (project.status() != ProjectStatus.READY) {
@@ -114,7 +131,9 @@ public final class ProjectApplicationService {
         }
         RepositorySnapshot snapshot = snapshots.findByProjectId(actor.tenantId(), projectId)
                 .orElseThrow(() -> new ApplicationException("SNAPSHOT_NOT_FOUND", "项目仓库快照不存在，请重新导入"));
+        progress.update(38, "生成文章内容", "正在依据仓库事实调用 AI 生成正文、标签和推荐关键词");
         ContentGenerator.GeneratedContent generated = contentGenerator.generate(actor.tenantId(), snapshot, policy);
+        progress.update(82, "整理文章结果", "正文生成完成，正在补充来源链接并保存文章版本");
         String markdown = ensureSourceLink(generated.markdown(), project.gitUrl(), "推荐地址", "项目仓库");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.git(projectId), generationJobId,
@@ -127,16 +146,28 @@ public final class ProjectApplicationService {
         auditRecorder.record(actor, "ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("projectId", projectId.toString(), "sourceRevision", snapshot.revision(),
                         "language", policy.language()));
+        progress.update(94, "文章已经保存", "文章正文、标签、关键词和版本记录已完成落库");
         return saved;
     }
 
     public Article generateTopicArticle(ActorContext actor, TopicBrief brief, GenerationPolicy policy,
                                         UUID generationJobId) {
+        return generateTopicArticle(actor, brief, policy, generationJobId, JobProgressReporter.noop());
+    }
+
+    public Article generateTopicArticle(ActorContext actor, TopicBrief brief, GenerationPolicy policy,
+                                        UUID generationJobId, JobProgressReporter progress) {
+        progress.update(22, "整理创作简报", "正在校验主题、受众、文章类型和内容约束");
         if (generationJobId != null) {
             Article existing = articles.findByGenerationJobId(actor.tenantId(), generationJobId).orElse(null);
-            if (existing != null) return existing;
+            if (existing != null) {
+                progress.update(92, "复用生成结果", "检测到任务已有文章结果，正在完成状态同步");
+                return existing;
+            }
         }
+        progress.update(38, "生成主题文章", "正在依据创作简报组织结构并生成正文、标签和关键词");
         ContentGenerator.GeneratedContent generated = contentGenerator.generateFromBrief(actor.tenantId(), brief, policy);
+        progress.update(82, "保存主题文章", "正文生成完成，正在保存文章主稿和首个版本");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.topic(brief), generationJobId,
                 generated.title(), generated.summary(), generated.markdown(), generated.tags(), generated.keywords(), policy.language(),
@@ -147,18 +178,31 @@ public final class ProjectApplicationService {
         auditRecorder.record(actor, "TOPIC_ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("topic", brief.topic(), "articleType", brief.articleType(),
                         "knowledgeLevel", brief.knowledgeLevel(), "language", policy.language()));
+        progress.update(94, "文章已经保存", "主题文章及其标签、关键词和版本记录已完成落库");
         return saved;
     }
 
     public Article generateWebsiteArticle(ActorContext actor, WebsiteBrief brief, GenerationPolicy policy,
                                           UUID generationJobId) {
+        return generateWebsiteArticle(actor, brief, policy, generationJobId, JobProgressReporter.noop());
+    }
+
+    public Article generateWebsiteArticle(ActorContext actor, WebsiteBrief brief, GenerationPolicy policy,
+                                          UUID generationJobId, JobProgressReporter progress) {
+        progress.update(20, "准备网站分析", "正在校验网站地址和文章生成约束");
         if (generationJobId != null) {
             Article existing = articles.findByGenerationJobId(actor.tenantId(), generationJobId).orElse(null);
-            if (existing != null) return existing;
+            if (existing != null) {
+                progress.update(92, "复用生成结果", "检测到任务已有文章结果，正在完成状态同步");
+                return existing;
+            }
         }
+        progress.update(32, "提取网站公开信息", "正在读取网页正文、标题和公开描述信息");
         WebsiteSnapshot snapshot = websiteInspector.inspect(brief.websiteUrl());
+        progress.update(52, "生成网站文章", "网站信息提取完成，正在生成推荐正文、标签和关键词");
         ContentGenerator.GeneratedContent generated = contentGenerator.generateFromWebsite(
                 actor.tenantId(), brief, snapshot, policy);
+        progress.update(84, "保存网站文章", "正文生成完成，正在补充官方网站链接并保存版本");
         String markdown = ensureSourceLink(generated.markdown(), snapshot.url(), "推荐网站", "官方网站");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.website(brief, snapshot),
@@ -171,6 +215,7 @@ public final class ProjectApplicationService {
                 actor.subject(), now));
         auditRecorder.record(actor, "WEBSITE_ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("websiteHost", java.net.URI.create(snapshot.url()).getHost(), "language", policy.language()));
+        progress.update(94, "文章已经保存", "网站文章、来源信息和版本记录已完成落库");
         return saved;
     }
 

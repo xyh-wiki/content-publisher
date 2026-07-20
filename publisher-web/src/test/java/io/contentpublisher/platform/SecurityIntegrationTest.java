@@ -79,6 +79,17 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void shouldDenyViewerFromRetryingFailedPublication() throws Exception {
+        mockMvc.perform(post("/api/v1/jobs/" + UUID.randomUUID() + "/publication-retry")
+                        .header("Idempotency-Key", "security-publication-retry-001")
+                        .with(jwt().jwt(token -> token.subject("reader")
+                                        .claim("tenant_id", "tenant-a")
+                                        .claim("roles", List.of("VIEWER")))
+                                .authorities(new SimpleGrantedAuthority("ROLE_VIEWER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void shouldAcceptEditorJobSubmission() throws Exception {
         mockMvc.perform(post("/api/v1/projects/imports")
                         .header("Idempotency-Key", "security-test-import-001")

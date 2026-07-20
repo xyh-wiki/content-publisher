@@ -16,6 +16,7 @@ public interface JobRepository {
     List<Job> findRecentJobs(String tenantId, int limit);
     long countActiveJobs(String tenantId);
     Optional<Job> claimNext(String workerId, Instant now, Instant staleBefore);
+    boolean updateProgress(UUID jobId, String workerId, int percent, String label, String detail, Instant now);
     boolean markSucceeded(UUID jobId, String workerId, UUID resultResourceId, Instant now);
     boolean markRetryWaiting(UUID jobId, String workerId, Instant scheduledAt, String errorCode, String errorMessage, Instant now);
     boolean markFailed(UUID jobId, String workerId, String errorCode, String errorMessage, Instant now);

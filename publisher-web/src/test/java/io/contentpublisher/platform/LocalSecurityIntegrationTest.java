@@ -366,6 +366,11 @@ class LocalSecurityIntegrationTest {
                 .hasSize(2)
                 .extracting(job -> ((JobPayload.PublishArticle) job.payload()).channelAccountId())
                 .containsExactlyInAnyOrder(devAccountId, xAccountId);
+        mockMvc.perform(get("/publishing").session(session)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("发布批次看板")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEV 主账号")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("X 主账号")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("2 个平台")));
         mockMvc.perform(get("/channels").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("跳转登录发布平台")));
         mockMvc.perform(get("/articles/" + articleId + "/manual/XIAOHONGSHU").session(session))

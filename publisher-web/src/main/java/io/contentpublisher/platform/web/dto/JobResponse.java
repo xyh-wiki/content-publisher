@@ -7,6 +7,7 @@ import java.util.UUID;
 
 public record JobResponse(UUID id, String type, String status, int attempt, int maxAttempts,
                           int progressPercent, String progressLabel, String progressDetail,
+                          UUID batchId,
                           Instant scheduledAt, UUID resultResourceId, String resultResourceType,
                           String errorCode, String errorMessage, Instant createdAt, Instant updatedAt) {
     public static JobResponse from(Job job) {
@@ -18,7 +19,7 @@ public record JobResponse(UUID id, String type, String status, int attempt, int 
         };
         return new JobResponse(job.id(), job.type().name(), job.status().name(), job.attempt(), job.maxAttempts(),
                 progress.percent(), progress.label(), progress.detail(),
-                job.scheduledAt(), job.resultResourceId(), resourceType, job.errorCode(), job.errorMessage(),
+                job.batchId(), job.scheduledAt(), job.resultResourceId(), resourceType, job.errorCode(), job.errorMessage(),
                 job.createdAt(), job.updatedAt());
     }
 }

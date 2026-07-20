@@ -408,7 +408,10 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         entity.id = job.id(); entity.tenantId = job.tenantId(); entity.actorSubject = job.actorSubject();
         entity.type = job.type(); entity.status = job.status(); entity.payloadJson = writePayload(job.payload());
         entity.idempotencyKey = job.idempotencyKey(); entity.requestHash = job.requestHash();
-        entity.attempt = job.attempt(); entity.maxAttempts = job.maxAttempts(); entity.scheduledAt = job.scheduledAt();
+        entity.attempt = job.attempt(); entity.maxAttempts = job.maxAttempts();
+        entity.progressPercent = job.progressPercent(); entity.progressLabel = job.progressLabel();
+        entity.progressDetail = job.progressDetail(); entity.batchId = job.batchId();
+        entity.scheduledAt = job.scheduledAt();
         entity.lockedAt = job.lockedAt(); entity.lockOwner = job.lockOwner(); entity.resultResourceId = job.resultResourceId();
         entity.errorCode = job.errorCode(); entity.errorMessage = job.errorMessage();
         entity.createdAt = job.createdAt(); entity.updatedAt = job.updatedAt();
@@ -472,8 +475,22 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         if (candidates.isEmpty()) return Optional.empty();
         JobEntity entity = candidates.get(0);
         entity.status = JobStatus.RUNNING; entity.lockOwner = workerId; entity.lockedAt = now;
-        entity.attempt += 1; entity.errorCode = null; entity.errorMessage = null; entity.updatedAt = now;
+        entity.attempt += 1; entity.errorCode = null; entity.errorMessage = null;
+        entity.progressPercent = 12; entity.progressLabel = "任务已领取";
+        entity.progressDetail = "后台工作器已领取任务，准备执行实际处理步骤"; entity.updatedAt = now;
         return Optional.of(toDomain(jobs.save(entity)));
+    }
+
+    @Override
+    public boolean updateProgress(UUID jobId, String workerId, int percent, String label, String detail,
+                                  java.time.Instant now) {
+        if (percent < 0 || percent > 99) throw new IllegalArgumentException("运行中任务进度必须在 0 到 99 之间");
+        return transition(jobId, workerId, entity -> {
+            entity.progressPercent = Math.max(entity.progressPercent, percent);
+            entity.progressLabel = limited(label, 100);
+            entity.progressDetail = limited(detail, 500);
+            entity.updatedAt = now;
+        });
     }
 
     @Override
@@ -481,6 +498,8 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         return transition(jobId, workerId, entity -> {
             entity.status = JobStatus.SUCCEEDED; entity.resultResourceId = resultResourceId;
             entity.errorCode = null; entity.errorMessage = null; entity.updatedAt = now;
+            entity.progressPercent = 100; entity.progressLabel = "执行完成";
+            entity.progressDetail = "任务结果已经保存，可以继续下一步操作";
             entity.lockOwner = null; entity.lockedAt = null;
         });
     }
@@ -491,6 +510,8 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         return transition(jobId, workerId, entity -> {
             entity.status = JobStatus.RETRY_WAIT; entity.scheduledAt = scheduledAt;
             entity.errorCode = errorCode; entity.errorMessage = limitedError(errorMessage); entity.updatedAt = now;
+            entity.progressPercent = 15; entity.progressLabel = "等待重试";
+            entity.progressDetail = "本次执行未完成，系统将按照重试策略再次处理";
             entity.lockOwner = null; entity.lockedAt = null;
         });
     }
@@ -500,6 +521,8 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         return transition(jobId, workerId, entity -> {
             entity.status = JobStatus.FAILED; entity.errorCode = errorCode;
             entity.errorMessage = limitedError(errorMessage); entity.updatedAt = now;
+            entity.progressPercent = 100; entity.progressLabel = "执行失败";
+            entity.progressDetail = "任务已经停止，请根据异常信息调整后重试";
             entity.lockOwner = null; entity.lockedAt = null;
         });
     }
@@ -515,7 +538,8 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     private Job toDomain(JobEntity entity) {
         return new Job(entity.id, entity.tenantId, entity.actorSubject, entity.type, entity.status,
                 readPayload(entity.type, entity.payloadJson), entity.idempotencyKey, entity.requestHash,
-                entity.attempt, entity.maxAttempts, entity.scheduledAt, entity.lockedAt, entity.lockOwner,
+                entity.attempt, entity.maxAttempts, entity.progressPercent, entity.progressLabel,
+                entity.progressDetail, entity.batchId, entity.scheduledAt, entity.lockedAt, entity.lockOwner,
                 entity.resultResourceId, entity.errorCode, entity.errorMessage, entity.createdAt, entity.updatedAt);
     }
 
@@ -542,6 +566,11 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         if (message == null) return null;
         String sanitized = message.replaceAll("(?i)(bearer|token|password|api[_-]?key)\\s*[:=]?\\s*[^\\s,;]+", "$1=***");
         return sanitized.length() <= 2000 ? sanitized : sanitized.substring(0, 2000);
+    }
+
+    private String limited(String value, int maxLength) {
+        String normalized = value == null ? "" : value.trim();
+        return normalized.length() <= maxLength ? normalized : normalized.substring(0, maxLength);
     }
 
     private String write(List<String> values) {

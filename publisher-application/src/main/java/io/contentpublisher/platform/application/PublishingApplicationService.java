@@ -304,6 +304,12 @@ public final class PublishingApplicationService {
 
     public Publication publish(ActorContext actor, UUID articleId, UUID accountId, String canonicalUrl,
                                UUID publicationJobId) {
+        return publish(actor, articleId, accountId, canonicalUrl, publicationJobId, JobProgressReporter.noop());
+    }
+
+    public Publication publish(ActorContext actor, UUID articleId, UUID accountId, String canonicalUrl,
+                               UUID publicationJobId, JobProgressReporter progress) {
+        progress.update(20, "校验发布条件", "正在核对文章审核状态、发布账号和渠道配置");
         Publication existing = publications.findByPublicationJobId(actor.tenantId(), publicationJobId).orElse(null);
         if (existing != null) {
             if (existing.status() == PublicationStatus.PUBLISHED) {
@@ -311,6 +317,7 @@ public final class PublishingApplicationService {
                 if (existingArticle.status() != ArticleStatus.PUBLISHED) {
                     updateArticleStatus(existingArticle, ArticleStatus.PUBLISHED, actor.subject());
                 }
+                progress.update(92, "复用发布结果", "检测到平台已经返回成功结果，正在完成状态同步");
                 return existing;
             }
             throw new ApplicationException("PUBLICATION_ALREADY_ATTEMPTED", "发布任务已执行，请先核对渠道结果再重放");
@@ -326,28 +333,34 @@ public final class PublishingApplicationService {
         if (!verifiedBaseUrl.equals(account.baseUrl())) {
             throw new ApplicationException("CHANNEL_ENDPOINT_REJECTED", "渠道地址与已保存的安全地址不一致");
         }
+        progress.update(38, "创建发布记录", "发布条件校验完成，正在创建平台发布记录");
         Instant now = clock.instant();
         Publication publication = publications.save(new Publication(UUID.randomUUID(), actor.tenantId(), articleId,
                 accountId, publicationJobId, account.type(), canonicalUrl, PublicationStatus.PUBLISHING, null, null,
                 null, null, null, now, now));
         ChannelPublisher.PublishResult result;
         try {
+            progress.update(52, "适配平台格式", "正在按照目标平台限制转换标题、正文和链接");
             AdaptedContent adaptedContent = contentAdapter.adapt(article, account.type(), canonicalUrl);
+            progress.update(68, "调用平台接口", "内容适配完成，正在等待目标平台返回发布结果");
             result = publisher.publish(account, new ChannelPublisher.PublishContent(article, adaptedContent, canonicalUrl),
                     credentialVault.decrypt(account.encryptedCredentials()));
         } catch (ApplicationException exception) {
+            progress.update(88, "记录发布失败", "平台返回失败，正在保存错误代码和失败信息");
             Instant failedAt = clock.instant();
             publications.save(new Publication(publication.id(), publication.tenantId(), articleId, accountId,
                     publicationJobId, account.type(), canonicalUrl, PublicationStatus.FAILED, null, null,
                     exception.code(), limited(exception.getMessage()), null, publication.createdAt(), failedAt));
             throw exception;
         } catch (RuntimeException exception) {
+            progress.update(88, "记录发布失败", "渠道调用发生异常，正在保存安全的失败信息");
             Instant failedAt = clock.instant();
             publications.save(new Publication(publication.id(), publication.tenantId(), articleId, accountId,
                     publicationJobId, account.type(), canonicalUrl, PublicationStatus.FAILED, null, null,
                     "CHANNEL_INTERNAL_ERROR", "渠道发布发生内部错误", null, publication.createdAt(), failedAt));
             throw new ApplicationException("CHANNEL_INTERNAL_ERROR", "渠道发布发生内部错误", exception);
         }
+        progress.update(88, "保存平台结果", "平台发布成功，正在保存外部编号和结果地址");
         Instant completedAt = clock.instant();
         Publication published = publications.save(new Publication(publication.id(), publication.tenantId(),
                 articleId, accountId, publicationJobId, account.type(), canonicalUrl, PublicationStatus.PUBLISHED,
@@ -356,6 +369,7 @@ public final class PublishingApplicationService {
         updateArticleStatus(article, ArticleStatus.PUBLISHED, actor.subject());
         auditRecorder.record(actor, "ARTICLE_PUBLISHED", "PUBLICATION", published.id(),
                 Map.of("articleId", articleId.toString(), "channelType", account.type().name()));
+        progress.update(95, "发布结果已保存", "平台结果和文章发布状态已经完成落库");
         return published;
     }
 

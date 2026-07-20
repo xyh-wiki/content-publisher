@@ -95,6 +95,7 @@ public final class JobApplicationService {
         LinkedHashMap<String, Job> resolved = new LinkedHashMap<>();
         List<Job> candidates = new java.util.ArrayList<>();
         Instant now = clock.instant();
+        UUID batchId = publicationBatchId(actor.tenantId(), idempotencyKey);
         for (UUID accountId : accountIds) {
             String childKey = batchChildKey(idempotencyKey, accountId);
             String requestHash = hash("PUBLISH_ARTICLE", articleId.toString(), accountId.toString(),
@@ -106,9 +107,7 @@ public final class JobApplicationService {
             }
             JobPayload.PublishArticle payload = new JobPayload.PublishArticle(articleId, accountId,
                     normalizedCanonicalUrl);
-            candidates.add(new Job(UUID.randomUUID(), actor.tenantId(), actor.subject(), JobType.PUBLISH_ARTICLE,
-                    JobStatus.PENDING, payload, childKey, requestHash, 0, maxAttempts, now, null, null, null,
-                    null, null, now, now));
+            candidates.add(pendingJob(actor, JobType.PUBLISH_ARTICLE, payload, childKey, requestHash, batchId, now));
         }
 
         List<Job> created = jobs.createBatchIfWithinQuota(candidates, maxActiveJobsPerTenant)
@@ -121,6 +120,27 @@ public final class JobApplicationService {
                             "batchIdempotencyKey", idempotencyKey));
         });
         return accountIds.stream().map(accountId -> resolved.get(batchChildKey(idempotencyKey, accountId))).toList();
+    }
+
+    public Job retryFailedPublication(ActorContext actor, UUID failedJobId, String idempotencyKey) {
+        validateIdempotencyKey(idempotencyKey);
+        Job failed = getJob(actor, failedJobId);
+        if (failed.type() != JobType.PUBLISH_ARTICLE || failed.status() != JobStatus.FAILED) {
+            throw new ApplicationException("JOB_NOT_RETRYABLE", "只有执行失败的平台发布任务可以手动重试");
+        }
+        JobPayload.PublishArticle payload = (JobPayload.PublishArticle) failed.payload();
+        publishing.assertPublishable(actor, payload.articleId(), payload.channelAccountId());
+        String requestHash = hash("PUBLISH_ARTICLE", payload.articleId().toString(),
+                payload.channelAccountId().toString(), value(payload.canonicalUrl()));
+        Job existing = existingJob(actor.tenantId(), JobType.PUBLISH_ARTICLE, idempotencyKey, requestHash);
+        if (existing != null) return existing;
+        Job saved = jobs.createIfWithinQuota(pendingJob(actor, JobType.PUBLISH_ARTICLE, payload, idempotencyKey,
+                        requestHash, failed.batchId(), clock.instant()), maxActiveJobsPerTenant)
+                .orElseThrow(() -> new ApplicationException("TENANT_JOB_QUOTA_EXCEEDED", "租户活跃任务数量已达到上限"));
+        auditRecorder.record(actor, "JOB_MANUAL_RETRY_SUBMITTED", "JOB", saved.id(),
+                Map.of("failedJobId", failedJobId.toString(),
+                        "batchId", failed.batchId() == null ? "" : failed.batchId().toString()));
+        return saved;
     }
 
     public Job getJob(ActorContext actor, UUID jobId) {
@@ -140,9 +160,7 @@ public final class JobApplicationService {
         Job existing = existingJob(actor.tenantId(), type, idempotencyKey, requestHash);
         if (existing != null) return existing;
         Instant now = clock.instant();
-        Job candidate = new Job(UUID.randomUUID(), actor.tenantId(), actor.subject(), type, JobStatus.PENDING,
-                payload, idempotencyKey, requestHash, 0, maxAttempts, now, null, null, null,
-                null, null, now, now);
+        Job candidate = pendingJob(actor, type, payload, idempotencyKey, requestHash, null, now);
         Job saved = jobs.createIfWithinQuota(candidate, maxActiveJobsPerTenant)
                 .orElseThrow(() -> new ApplicationException("TENANT_JOB_QUOTA_EXCEEDED", "租户活跃任务数量已达到上限"));
         auditRecorder.record(actor, "JOB_SUBMITTED", "JOB", saved.id(),
@@ -168,6 +186,18 @@ public final class JobApplicationService {
 
     private String batchChildKey(String batchKey, UUID accountId) {
         return "publication-batch:" + hash(batchKey, accountId.toString()).substring(0, 48);
+    }
+
+    private UUID publicationBatchId(String tenantId, String batchKey) {
+        return UUID.nameUUIDFromBytes((tenantId + ":" + batchKey).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Job pendingJob(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey,
+                           String requestHash, UUID batchId, Instant now) {
+        return new Job(UUID.randomUUID(), actor.tenantId(), actor.subject(), type, JobStatus.PENDING,
+                payload, idempotencyKey, requestHash, 0, maxAttempts, 5, "等待执行",
+                "任务已进入队列，等待后台工作器领取", batchId, now, null, null, null,
+                null, null, now, now);
     }
 
     private void validateIdempotencyKey(String key) {

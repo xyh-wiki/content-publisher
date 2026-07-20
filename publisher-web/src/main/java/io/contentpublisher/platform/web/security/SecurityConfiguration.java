@@ -119,7 +119,8 @@ public class SecurityConfiguration {
                 .requestMatchers(HttpMethod.GET, "/channels", "/publishing")
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/publications",
-                        "/articles/*/publication-batches", "/articles/*/manual/**")
+                        "/articles/*/publication-batches", "/articles/*/manual/**",
+                        "/jobs/*/publication-retry")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/articles/*/manual/**")
                     .hasAnyRole("EDITOR", "ADMIN")
@@ -144,7 +145,7 @@ public class SecurityConfiguration {
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/channel-accounts/**").hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/articles/*/publications",
-                        "/api/v1/articles/*/publication-batches")
+                        "/api/v1/articles/*/publication-batches", "/api/v1/jobs/*/publication-retry")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/articles/topic-generations")
                     .hasAnyRole("EDITOR", "ADMIN")
