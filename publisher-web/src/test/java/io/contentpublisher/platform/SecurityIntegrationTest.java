@@ -1,10 +1,12 @@
 package io.contentpublisher.platform;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.UUID;
@@ -13,20 +15,27 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:security;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
         "publisher.security.enabled=true",
         "publisher.jobs.worker-enabled=false",
+        "publisher.channels.enabled=true",
+        "publisher.channels.encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://127.0.0.1/unused"
 })
 @AutoConfigureMockMvc
 class SecurityIntegrationTest {
     @Autowired MockMvc mockMvc;
+    @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired ObjectMapper objectMapper;
 
     @Test
     void shouldRequireAuthentication() throws Exception {
@@ -83,5 +92,74 @@ class SecurityIntegrationTest {
                                 .authorities(new SimpleGrantedAuthority("ROLE_EDITOR"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("REQUEST_HEADER_MISSING"));
+    }
+
+    @Test
+    void shouldAllowOnlyAdminToCreateEncryptedChannelAccount() throws Exception {
+        String body = """
+                {"type":"DEV","displayName":"DEV Main","credentials":{"apiKey":"secret-value"}}
+                """;
+        mockMvc.perform(post("/api/v1/channel-accounts")
+                        .header("Idempotency-Key", "channel-account-001")
+                        .contentType("application/json").content(body)
+                        .with(jwt().jwt(token -> token.subject("editor").claim("tenant_id", "tenant-channel")
+                                        .claim("roles", List.of("EDITOR")))
+                                .authorities(new SimpleGrantedAuthority("ROLE_EDITOR"))))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/channel-accounts")
+                        .header("Idempotency-Key", "channel-account-001")
+                        .contentType("application/json").content(body)
+                        .with(jwt().jwt(token -> token.subject("admin").claim("tenant_id", "tenant-channel")
+                                        .claim("roles", List.of("ADMIN")))
+                                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.type").value("DEV"))
+                .andExpect(jsonPath("$.baseUrl").value("https://dev.to"))
+                .andExpect(jsonPath("$.credentials").doesNotExist());
+
+        String encrypted = jdbcTemplate.queryForObject(
+                "select encrypted_credentials from channel_accounts where tenant_id = ?", String.class,
+                "tenant-channel");
+        assertThat(encrypted).startsWith("v1:").doesNotContain("secret-value");
+    }
+
+    @Test
+    void shouldRestrictLifecycleOperationsAndEncryptRotatedCredentials() throws Exception {
+        String tenant = "tenant-channel-lifecycle";
+        var admin = jwt().jwt(token -> token.subject("admin").claim("tenant_id", tenant)
+                        .claim("roles", List.of("ADMIN")))
+                .authorities(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        var editor = jwt().jwt(token -> token.subject("editor").claim("tenant_id", tenant)
+                        .claim("roles", List.of("EDITOR")))
+                .authorities(new SimpleGrantedAuthority("ROLE_EDITOR"));
+        String createBody = """
+                {"type":"DEV","displayName":"DEV Lifecycle","credentials":{"apiKey":"initial-secret"}}
+                """;
+        String response = mockMvc.perform(post("/api/v1/channel-accounts")
+                        .header("Idempotency-Key", "channel-lifecycle-001")
+                        .contentType("application/json").content(createBody).with(admin))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        UUID accountId = UUID.fromString(objectMapper.readTree(response).path("id").asText());
+
+        String rotateBody = """
+                {"expectedVersion":1,"credentials":{"apiKey":"rotated-secret-value"}}
+                """;
+        mockMvc.perform(put("/api/v1/channel-accounts/{accountId}/credentials", accountId)
+                        .contentType("application/json").content(rotateBody).with(editor))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(patch("/api/v1/channel-accounts/{accountId}/status", accountId)
+                        .contentType("application/json")
+                        .content("{\"expectedVersion\":1,\"status\":\"DISABLED\"}").with(editor))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put("/api/v1/channel-accounts/{accountId}/credentials", accountId)
+                        .contentType("application/json").content(rotateBody).with(admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2));
+
+        String encrypted = jdbcTemplate.queryForObject(
+                "select encrypted_credentials from channel_accounts where id = ?", String.class, accountId);
+        assertThat(encrypted).startsWith("v1:").doesNotContain("rotated-secret-value");
     }
 }

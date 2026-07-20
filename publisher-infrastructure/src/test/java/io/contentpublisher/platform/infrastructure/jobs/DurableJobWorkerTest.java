@@ -2,6 +2,7 @@ package io.contentpublisher.platform.infrastructure.jobs;
 
 import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.application.ProjectApplicationService;
+import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.domain.Job;
@@ -69,7 +70,8 @@ class DurableJobWorkerTest {
     private DurableJobWorker worker(JobRepository jobs, ProjectApplicationService projects, AuditRecorder audits) {
         JobProperties properties = new JobProperties(true, 20, 3, Duration.ofSeconds(1),
                 Duration.ofMinutes(5), Duration.ofSeconds(10), Duration.ofMinutes(5));
-        return new DurableJobWorker(jobs, projects, audits, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+        return new DurableJobWorker(jobs, projects, mock(PublishingApplicationService.class), audits,
+                properties, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private Job runningJob(int attempt, int maxAttempts) {
