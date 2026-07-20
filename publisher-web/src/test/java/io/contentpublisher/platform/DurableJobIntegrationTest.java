@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -89,5 +90,23 @@ class DurableJobIntegrationTest {
         Job failed = jobs.findJobById("tenant-expired", abandoned.id()).orElseThrow();
         assertThat(failed.status()).isEqualTo(JobStatus.FAILED);
         assertThat(failed.errorCode()).isEqualTo("WORKER_LEASE_EXPIRED");
+    }
+
+    @Test
+    void shouldRejectWholeBatchWhenActiveJobQuotaIsInsufficient() {
+        Instant created = Instant.parse("2026-07-20T00:00:00Z");
+        String tenantId = "tenant-batch-quota";
+        Job first = pendingPublication(tenantId, "batch-child-001", created);
+        Job second = pendingPublication(tenantId, "batch-child-002", created);
+
+        assertThat(jobs.createBatchIfWithinQuota(List.of(first, second), 1)).isEmpty();
+        assertThat(jobs.findJobById(tenantId, first.id())).isEmpty();
+        assertThat(jobs.findJobById(tenantId, second.id())).isEmpty();
+    }
+
+    private Job pendingPublication(String tenantId, String idempotencyKey, Instant created) {
+        return new Job(UUID.randomUUID(), tenantId, "editor", JobType.PUBLISH_ARTICLE, JobStatus.PENDING,
+                new JobPayload.PublishArticle(UUID.randomUUID(), UUID.randomUUID(), null), idempotencyKey,
+                "c".repeat(64), 0, 3, created, null, null, null, null, null, created, created);
     }
 }

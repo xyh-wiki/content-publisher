@@ -424,6 +424,20 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     }
 
     @Override
+    @Transactional(isolation = Isolation.SERIALIZABLE)
+    public Optional<List<Job>> createBatchIfWithinQuota(List<Job> batch, int maxActiveJobs) {
+        if (batch.isEmpty()) return Optional.of(List.of());
+        String tenantId = batch.get(0).tenantId();
+        if (batch.stream().anyMatch(job -> !tenantId.equals(job.tenantId()))) {
+            throw new IllegalArgumentException("批量任务必须属于同一租户");
+        }
+        long active = jobs.countByTenantIdAndStatusIn(tenantId,
+                List.of(JobStatus.PENDING, JobStatus.RUNNING, JobStatus.RETRY_WAIT));
+        if (active + batch.size() > maxActiveJobs) return Optional.empty();
+        return Optional.of(batch.stream().map(this::save).toList());
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public Optional<Job> findJobById(String tenantId, UUID jobId) {
         return jobs.findByTenantIdAndId(tenantId, jobId).map(this::toDomain);

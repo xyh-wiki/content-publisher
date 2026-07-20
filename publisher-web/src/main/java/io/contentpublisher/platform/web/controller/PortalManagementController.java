@@ -18,7 +18,7 @@ import io.contentpublisher.platform.web.form.GenerateArticleForm;
 import io.contentpublisher.platform.web.form.ImportProjectForm;
 import io.contentpublisher.platform.web.form.RejectArticleForm;
 import io.contentpublisher.platform.web.form.UpdateArticleForm;
-import io.contentpublisher.platform.web.form.PublishArticleForm;
+import io.contentpublisher.platform.web.form.BatchPublishArticleForm;
 import io.contentpublisher.platform.web.form.CreateTopicArticleForm;
 import io.contentpublisher.platform.web.form.CreateWebsiteArticleForm;
 import io.contentpublisher.platform.web.dto.ChannelAccountView;
@@ -199,9 +199,9 @@ public class PortalManagementController {
         model.addAttribute("versions", publishing.getArticleVersions(actor, articleId));
         model.addAttribute("updateArticleForm", articleForm(article));
         model.addAttribute("rejectArticleForm", new RejectArticleForm());
-        PublishArticleForm publishArticleForm = new PublishArticleForm();
-        publishArticleForm.setIdempotencyKey(idempotencyKey("publish"));
-        model.addAttribute("publishArticleForm", publishArticleForm);
+        BatchPublishArticleForm batchPublishArticleForm = new BatchPublishArticleForm();
+        batchPublishArticleForm.setIdempotencyKey(idempotencyKey("publish-batch"));
+        model.addAttribute("batchPublishArticleForm", batchPublishArticleForm);
         model.addAttribute("channelAccounts", publishing.listAccounts(actor).stream()
                 .filter(account -> account.status().name().equals("ACTIVE"))
                 .map(ChannelAccountView::from).toList());

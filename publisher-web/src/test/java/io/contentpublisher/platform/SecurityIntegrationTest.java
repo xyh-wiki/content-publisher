@@ -66,6 +66,19 @@ class SecurityIntegrationTest {
     }
 
     @Test
+    void shouldDenyViewerFromSubmittingPublicationBatch() throws Exception {
+        String body = "{\"channelAccountIds\":[\"" + UUID.randomUUID() + "\"]}";
+        mockMvc.perform(post("/api/v1/articles/" + UUID.randomUUID() + "/publication-batches")
+                        .header("Idempotency-Key", "security-publication-batch-001")
+                        .contentType("application/json").content(body)
+                        .with(jwt().jwt(token -> token.subject("reader")
+                                        .claim("tenant_id", "tenant-a")
+                                        .claim("roles", List.of("VIEWER")))
+                                .authorities(new SimpleGrantedAuthority("ROLE_VIEWER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void shouldAcceptEditorJobSubmission() throws Exception {
         mockMvc.perform(post("/api/v1/projects/imports")
                         .header("Idempotency-Key", "security-test-import-001")

@@ -3,10 +3,16 @@ package io.contentpublisher.platform;
 import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.application.port.ProjectRepository;
 import io.contentpublisher.platform.application.port.ManualPublicationRepository;
+import io.contentpublisher.platform.application.port.ChannelAccountRepository;
+import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.application.AiSettingsApplicationService;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.domain.ArticleVersion;
+import io.contentpublisher.platform.domain.ChannelAccount;
+import io.contentpublisher.platform.domain.ChannelAccountStatus;
+import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.JobPayload;
 import io.contentpublisher.platform.domain.Project;
 import io.contentpublisher.platform.domain.ProjectStatus;
 import org.junit.jupiter.api.Test;
@@ -55,6 +61,8 @@ class LocalSecurityIntegrationTest {
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired ManualPublicationRepository manualPublications;
+    @Autowired ChannelAccountRepository channelAccounts;
+    @Autowired JobRepository jobRepository;
 
     @Test
     void shouldRenderLoginAndCreateAuthenticatedTenantSession() throws Exception {
@@ -327,10 +335,35 @@ class LocalSecurityIntegrationTest {
                 ArticleStatus.APPROVED, "admin", "admin", now, now);
         articles.saveWithVersion(article, new ArticleVersion("tenant-local", articleId, 1, article.title(),
                 article.summary(), article.markdown(), article.keywords(), "admin", now));
+        UUID devAccountId = UUID.randomUUID();
+        UUID xAccountId = UUID.randomUUID();
+        channelAccounts.save(new ChannelAccount(devAccountId, "tenant-local", ChannelType.DEV, "DEV 主账号",
+                "https://dev.to", "v1:test", "account-dev-001", "a".repeat(64), "b".repeat(64), 1,
+                ChannelAccountStatus.ACTIVE, "admin", "admin", now, now));
+        channelAccounts.save(new ChannelAccount(xAccountId, "tenant-local", ChannelType.X, "X 主账号",
+                "https://api.x.com", "v1:test", "account-x-001", "c".repeat(64), "d".repeat(64), 1,
+                ChannelAccountStatus.ACTIVE, "admin", "admin", now, now));
         MockHttpSession session = login();
 
         mockMvc.perform(get("/publishing").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("多平台发布中心")));
+        mockMvc.perform(get("/articles/" + articleId).session(session)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("一键多平台发布")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("DEV 主账号")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("X 主账号")));
+        mockMvc.perform(post("/articles/" + articleId + "/publication-batches").session(session).with(csrf())
+                        .param("channelAccountIds", devAccountId.toString(), xAccountId.toString())
+                        .param("canonicalUrl", "https://example.com/original")
+                        .param("idempotencyKey", "portal-publication-batch-001"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/articles/" + articleId));
+
+        assertThat(jobRepository.findRecentJobs("tenant-local", 100).stream()
+                .filter(job -> job.payload() instanceof JobPayload.PublishArticle payload
+                        && payload.articleId().equals(articleId)).toList())
+                .hasSize(2)
+                .extracting(job -> ((JobPayload.PublishArticle) job.payload()).channelAccountId())
+                .containsExactlyInAnyOrder(devAccountId, xAccountId);
         mockMvc.perform(get("/channels").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("跳转登录发布平台")));
         mockMvc.perform(get("/articles/" + articleId + "/manual/XIAOHONGSHU").session(session))

@@ -18,6 +18,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -84,6 +85,44 @@ public final class JobApplicationService {
                 hash("PUBLISH_ARTICLE", articleId.toString(), channelAccountId.toString(), value(normalizedCanonicalUrl)));
     }
 
+    public List<Job> submitPublications(ActorContext actor, UUID articleId, List<UUID> channelAccountIds,
+                                        String canonicalUrl, String idempotencyKey) {
+        validateIdempotencyKey(idempotencyKey);
+        List<UUID> accountIds = normalizeAccountIds(channelAccountIds);
+        String normalizedCanonicalUrl = publishing.validateCanonicalUrl(canonicalUrl);
+        accountIds.forEach(accountId -> publishing.assertPublishable(actor, articleId, accountId));
+
+        LinkedHashMap<String, Job> resolved = new LinkedHashMap<>();
+        List<Job> candidates = new java.util.ArrayList<>();
+        Instant now = clock.instant();
+        for (UUID accountId : accountIds) {
+            String childKey = batchChildKey(idempotencyKey, accountId);
+            String requestHash = hash("PUBLISH_ARTICLE", articleId.toString(), accountId.toString(),
+                    value(normalizedCanonicalUrl));
+            Job existing = existingJob(actor.tenantId(), JobType.PUBLISH_ARTICLE, childKey, requestHash);
+            if (existing != null) {
+                resolved.put(childKey, existing);
+                continue;
+            }
+            JobPayload.PublishArticle payload = new JobPayload.PublishArticle(articleId, accountId,
+                    normalizedCanonicalUrl);
+            candidates.add(new Job(UUID.randomUUID(), actor.tenantId(), actor.subject(), JobType.PUBLISH_ARTICLE,
+                    JobStatus.PENDING, payload, childKey, requestHash, 0, maxAttempts, now, null, null, null,
+                    null, null, now, now));
+        }
+
+        List<Job> created = jobs.createBatchIfWithinQuota(candidates, maxActiveJobsPerTenant)
+                .orElseThrow(() -> new ApplicationException("TENANT_JOB_QUOTA_EXCEEDED",
+                        "租户活跃任务配额不足，无法提交全部发布平台"));
+        created.forEach(job -> {
+            resolved.put(job.idempotencyKey(), job);
+            auditRecorder.record(actor, "JOB_SUBMITTED", "JOB", job.id(),
+                    Map.of("jobType", job.type().name(), "idempotencyKey", job.idempotencyKey(),
+                            "batchIdempotencyKey", idempotencyKey));
+        });
+        return accountIds.stream().map(accountId -> resolved.get(batchChildKey(idempotencyKey, accountId))).toList();
+    }
+
     public Job getJob(ActorContext actor, UUID jobId) {
         return jobs.findJobById(actor.tenantId(), jobId)
                 .orElseThrow(() -> new ApplicationException("JOB_NOT_FOUND", "任务不存在"));
@@ -98,13 +137,8 @@ public final class JobApplicationService {
 
     private Job submit(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey, String requestHash) {
         validateIdempotencyKey(idempotencyKey);
-        Job existing = jobs.findByIdempotencyKey(actor.tenantId(), idempotencyKey).orElse(null);
-        if (existing != null) {
-            if (existing.type() != type || !existing.requestHash().equals(requestHash)) {
-                throw new ApplicationException("IDEMPOTENCY_KEY_CONFLICT", "幂等键已用于不同请求");
-            }
-            return existing;
-        }
+        Job existing = existingJob(actor.tenantId(), type, idempotencyKey, requestHash);
+        if (existing != null) return existing;
         Instant now = clock.instant();
         Job candidate = new Job(UUID.randomUUID(), actor.tenantId(), actor.subject(), type, JobStatus.PENDING,
                 payload, idempotencyKey, requestHash, 0, maxAttempts, now, null, null, null,
@@ -114,6 +148,26 @@ public final class JobApplicationService {
         auditRecorder.record(actor, "JOB_SUBMITTED", "JOB", saved.id(),
                 Map.of("jobType", type.name(), "idempotencyKey", idempotencyKey));
         return saved;
+    }
+
+    private Job existingJob(String tenantId, JobType type, String idempotencyKey, String requestHash) {
+        Job existing = jobs.findByIdempotencyKey(tenantId, idempotencyKey).orElse(null);
+        if (existing != null && (existing.type() != type || !existing.requestHash().equals(requestHash))) {
+            throw new ApplicationException("IDEMPOTENCY_KEY_CONFLICT", "幂等键已用于不同请求");
+        }
+        return existing;
+    }
+
+    private List<UUID> normalizeAccountIds(List<UUID> accountIds) {
+        if (accountIds == null) throw new ApplicationException("INVALID_ARGUMENT", "请至少选择一个发布账号");
+        List<UUID> normalized = accountIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (normalized.isEmpty()) throw new ApplicationException("INVALID_ARGUMENT", "请至少选择一个发布账号");
+        if (normalized.size() > 20) throw new ApplicationException("INVALID_ARGUMENT", "单次最多发布到 20 个账号");
+        return normalized;
+    }
+
+    private String batchChildKey(String batchKey, UUID accountId) {
+        return "publication-batch:" + hash(batchKey, accountId.toString()).substring(0, 48);
     }
 
     private void validateIdempotencyKey(String key) {

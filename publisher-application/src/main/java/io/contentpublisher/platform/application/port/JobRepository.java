@@ -10,6 +10,7 @@ import java.util.UUID;
 public interface JobRepository {
     Job save(Job job);
     Optional<Job> createIfWithinQuota(Job job, int maxActiveJobs);
+    Optional<List<Job>> createBatchIfWithinQuota(List<Job> jobs, int maxActiveJobs);
     Optional<Job> findJobById(String tenantId, UUID jobId);
     Optional<Job> findByIdempotencyKey(String tenantId, String idempotencyKey);
     List<Job> findRecentJobs(String tenantId, int limit);

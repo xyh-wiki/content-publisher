@@ -61,13 +61,14 @@
                     <section class="card"><div class="card-header"><div><p class="section-kicker">Recommended keywords</p><h3>推荐关键词</h3></div></div>
                         <div class="tag-row"><span class="tag" th:each="keyword : ${article.keywords}" th:text="${keyword}">keyword</span><span th:if="${#lists.isEmpty(article.keywords)}">暂无推荐关键词</span></div></section>
 
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">API publishing</p><h3>自动发布</h3><p>提交后按目标平台格式自动适配，并由后台任务调用官方 API。</p></div></div>
+                    <section class="card"><div class="card-header"><div><p class="section-kicker">API publishing</p><h3>一键多平台发布</h3><p>勾选多个账号后一次提交；系统按平台独立适配并拆分任务，单个平台失败可单独重试。</p></div></div>
                         <div class="alert warning" th:if="${#lists.isEmpty(channelAccounts)}">尚未配置 API 渠道。前往 <a class="text-link" th:href="@{/channels}">渠道管理</a>添加账号。</div>
-                        <form class="stack-form" th:if="${canEdit and !#lists.isEmpty(channelAccounts)}" th:action="@{/articles/{id}/publications(id=${article.id})}" th:object="${publishArticleForm}" method="post">
-                            <input type="hidden" th:field="*{idempotencyKey}"><div class="field"><label>发布账号</label><select th:field="*{channelAccountId}" required><option value="">选择渠道账号</option>
-                                <option th:each="account : ${channelAccounts}" th:value="${account.id}" th:text="|${account.displayName} · ${account.type}|">账号</option></select></div>
+                        <form class="stack-form" th:if="${canEdit and !#lists.isEmpty(channelAccounts)}" th:action="@{/articles/{id}/publication-batches(id=${article.id})}" th:object="${batchPublishArticleForm}" method="post">
+                            <input type="hidden" th:field="*{idempotencyKey}"><div class="field"><label>发布账号（可多选）</label><div class="compact-list">
+                                <label class="publish-account check-row" th:each="account : ${channelAccounts}"><span><strong th:text="${account.displayName}">账号</strong><small th:text="${channelNames.get(account.type)}">平台</small></span><input type="checkbox" th:field="*{channelAccountIds}" th:value="${account.id}"></label>
+                            </div></div>
                             <div class="field"><label>原文链接（可选）</label><input th:field="*{canonicalUrl}" type="url" maxlength="2048" placeholder="https://example.com/original"><small>用于 canonical URL 或附加到推广短帖。</small></div>
-                            <button class="primary-button" type="submit" th:disabled="${article.status.name() != 'APPROVED' and article.status.name() != 'PUBLISHED'}">提交 API 发布任务</button>
+                            <button class="primary-button" type="submit" th:disabled="${article.status.name() != 'APPROVED' and article.status.name() != 'PUBLISHED'}">一键提交多平台发布</button>
                         </form>
                     </section>
 

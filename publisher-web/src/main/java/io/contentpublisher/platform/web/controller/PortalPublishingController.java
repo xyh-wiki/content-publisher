@@ -9,6 +9,7 @@ import io.contentpublisher.platform.application.PublicationRecord;
 import io.contentpublisher.platform.domain.ChannelType;
 import io.contentpublisher.platform.domain.PublicationStatus;
 import io.contentpublisher.platform.web.form.CreateChannelAccountForm;
+import io.contentpublisher.platform.web.form.BatchPublishArticleForm;
 import io.contentpublisher.platform.web.form.ManualPublicationForm;
 import io.contentpublisher.platform.web.form.PublishArticleForm;
 import io.contentpublisher.platform.web.dto.ChannelAccountView;
@@ -128,6 +129,25 @@ public class PortalPublishingController {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
             return "redirect:/articles/" + articleId;
         }
+    }
+
+    @PostMapping("/articles/{articleId}/publication-batches")
+    public String publishBatch(@PathVariable UUID articleId,
+                               @Valid @ModelAttribute BatchPublishArticleForm form,
+                               BindingResult bindingResult,
+                               RedirectAttributes redirectAttributes) {
+        if (bindingResult.hasErrors()) {
+            redirectAttributes.addFlashAttribute("error", firstError(bindingResult));
+            return "redirect:/articles/" + articleId;
+        }
+        try {
+            var submitted = jobs.submitPublications(actors.currentActor(), articleId, form.getChannelAccountIds(),
+                    blankToNull(form.getCanonicalUrl()), form.getIdempotencyKey());
+            redirectAttributes.addFlashAttribute("success", "已提交 " + submitted.size() + " 个平台发布任务");
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/articles/" + articleId;
     }
 
     @GetMapping("/articles/{articleId}/manual/{channelType}")

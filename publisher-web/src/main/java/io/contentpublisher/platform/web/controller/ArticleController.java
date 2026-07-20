@@ -5,6 +5,8 @@ import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.web.dto.ArticleResponse;
 import io.contentpublisher.platform.web.dto.JobResponse;
 import io.contentpublisher.platform.web.dto.PublishArticleRequest;
+import io.contentpublisher.platform.web.dto.PublishArticleBatchRequest;
+import io.contentpublisher.platform.web.dto.PublicationBatchResponse;
 import io.contentpublisher.platform.web.dto.RejectArticleRequest;
 import io.contentpublisher.platform.web.dto.UpdateArticleRequest;
 import io.contentpublisher.platform.web.dto.ArticleVersionResponse;
@@ -79,6 +81,16 @@ public class ArticleController {
                 request.canonicalUrl(), idempotencyKey);
         return ResponseEntity.accepted().header(HttpHeaders.LOCATION, "/api/v1/jobs/" + job.id())
                 .body(JobResponse.from(job));
+    }
+
+    @PostMapping("/{articleId}/publication-batches")
+    public ResponseEntity<PublicationBatchResponse> publishBatch(
+            @PathVariable UUID articleId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody PublishArticleBatchRequest request) {
+        var submitted = jobs.submitPublications(actors.currentActor(), articleId, request.channelAccountIds(),
+                request.canonicalUrl(), idempotencyKey);
+        return ResponseEntity.accepted().body(PublicationBatchResponse.from(submitted));
     }
 
     @PostMapping("/topic-generations")
