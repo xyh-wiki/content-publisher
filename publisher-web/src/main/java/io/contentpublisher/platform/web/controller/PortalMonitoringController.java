@@ -2,24 +2,25 @@ package io.contentpublisher.platform.web.controller;
 
 import io.contentpublisher.platform.application.ChannelCatalog;
 import io.contentpublisher.platform.application.JobApplicationService;
+import io.contentpublisher.platform.application.MonitoringApplicationService;
+import io.contentpublisher.platform.application.MonitoringSnapshot;
+import io.contentpublisher.platform.application.MonitoringWindow;
 import io.contentpublisher.platform.application.ProjectApplicationService;
-import io.contentpublisher.platform.application.PublicationRecord;
 import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.domain.ArticleSourceType;
 import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
 import io.contentpublisher.platform.domain.JobStatus;
+import io.contentpublisher.platform.domain.JobType;
 import io.contentpublisher.platform.domain.ProjectStatus;
 import io.contentpublisher.platform.domain.PublicationStatus;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -29,165 +30,174 @@ import java.util.UUID;
 
 @Controller
 public class PortalMonitoringController {
-    private static final int MONITORING_SAMPLE_LIMIT = 100;
+    private static final int RECENT_ACTIVITY_LIMIT = 100;
 
+    private final MonitoringApplicationService monitoring;
     private final ProjectApplicationService projects;
     private final JobApplicationService jobs;
     private final PublishingApplicationService publishing;
     private final RequestActorProvider actors;
-    private final Clock clock;
 
-    public PortalMonitoringController(ProjectApplicationService projects,
+    public PortalMonitoringController(MonitoringApplicationService monitoring,
+                                      ProjectApplicationService projects,
                                       JobApplicationService jobs,
                                       PublishingApplicationService publishing,
-                                      RequestActorProvider actors,
-                                      Clock clock) {
+                                      RequestActorProvider actors) {
+        this.monitoring = monitoring;
         this.projects = projects;
         this.jobs = jobs;
         this.publishing = publishing;
         this.actors = actors;
-        this.clock = clock;
     }
 
     @GetMapping("/monitoring")
-    public String monitoring(Model model) {
+    public String monitoring(@RequestParam(name = "range", required = false) String range, Model model) {
+        populateMonitoring(range, model);
+        return "monitoring";
+    }
+
+    @GetMapping("/monitoring/live")
+    public String monitoringLive(@RequestParam(name = "range", required = false) String range, Model model) {
+        populateMonitoring(range, model);
+        return "monitoring :: liveData";
+    }
+
+    private void populateMonitoring(String range, Model model) {
         var actor = actors.currentActor();
-        var projectList = projects.listProjects(actor, MONITORING_SAMPLE_LIMIT);
-        var articleList = projects.listArticles(actor, MONITORING_SAMPLE_LIMIT);
-        var jobList = jobs.listJobs(actor, MONITORING_SAMPLE_LIMIT);
-        var publicationList = publishing.listPublicationRecords(actor, MONITORING_SAMPLE_LIMIT);
-        var accountList = publishing.listAccounts(actor);
-        Instant capturedAt = clock.instant();
-        Instant last24Hours = capturedAt.minus(24, ChronoUnit.HOURS);
+        MonitoringWindow window = MonitoringWindow.fromCode(range);
+        MonitoringSnapshot snapshot = monitoring.snapshot(actor, window);
+        var articleList = projects.listArticles(actor, RECENT_ACTIVITY_LIMIT);
+        var jobList = jobs.listJobs(actor, RECENT_ACTIVITY_LIMIT);
+        var publicationList = publishing.listPublicationRecords(actor, RECENT_ACTIVITY_LIMIT);
 
-        long readyProjects = count(projectList, project -> project.status() == ProjectStatus.READY);
-        long activeJobs = count(jobList, job -> job.status().isActive());
-        long succeededJobs = count(jobList, job -> job.status() == JobStatus.SUCCEEDED);
-        long failedJobs = count(jobList, job -> job.status() == JobStatus.FAILED);
-        long finishedJobs = succeededJobs + failedJobs;
-        long publishedRecords = count(publicationList, record -> record.status() == PublicationStatus.PUBLISHED);
-        long failedPublications = count(publicationList, record -> record.status() == PublicationStatus.FAILED);
-        long completedPublications = publishedRecords + failedPublications;
-        long activeAccounts = count(accountList, account -> account.status() == ChannelAccountStatus.ACTIVE);
-        long publishableArticles = count(articleList, article -> article.status() == ArticleStatus.APPROVED
-                || article.status() == ArticleStatus.PUBLISHED);
+        long activeJobs = value(snapshot.jobsByStatus(), JobStatus.PENDING)
+                + value(snapshot.jobsByStatus(), JobStatus.RUNNING)
+                + value(snapshot.jobsByStatus(), JobStatus.RETRY_WAIT);
+        long succeededJobs = value(snapshot.windowJobsByStatus(), JobStatus.SUCCEEDED);
+        long failedJobs = value(snapshot.windowJobsByStatus(), JobStatus.FAILED);
+        long publishedRecords = value(snapshot.windowPublicationsByStatus(), PublicationStatus.PUBLISHED);
+        long failedPublications = value(snapshot.windowPublicationsByStatus(), PublicationStatus.FAILED);
+        long activeAccounts = value(snapshot.accountsByStatus(), ChannelAccountStatus.ACTIVE);
+        long publishableArticles = value(snapshot.articlesByStatus(), ArticleStatus.APPROVED)
+                + value(snapshot.articlesByStatus(), ArticleStatus.PUBLISHED);
 
-        model.addAttribute("capturedAt", capturedAt);
-        model.addAttribute("sampleLimit", MONITORING_SAMPLE_LIMIT);
-        model.addAttribute("projectCount", projectList.size());
-        model.addAttribute("articleCount", articleList.size());
+        model.addAttribute("capturedAt", snapshot.capturedAt());
+        model.addAttribute("windowStart", snapshot.windowStart());
+        model.addAttribute("selectedRange", window.code());
+        model.addAttribute("rangeLabel", window.label());
+        model.addAttribute("ranges", MonitoringWindow.values());
+        model.addAttribute("projectCount", snapshot.projectCount());
+        model.addAttribute("articleCount", snapshot.articleCount());
         model.addAttribute("activeJobCount", activeJobs);
-        model.addAttribute("publicationCount", publicationList.size());
-        model.addAttribute("projects24h", count(projectList, project -> isRecent(project.updatedAt(), last24Hours)));
-        model.addAttribute("articles24h", count(articleList, article -> isRecent(article.updatedAt(), last24Hours)));
-        model.addAttribute("jobs24h", count(jobList, job -> isRecent(job.updatedAt(), last24Hours)));
-        model.addAttribute("publications24h", count(publicationList,
-                record -> isRecent(record.updatedAt(), last24Hours)));
-        model.addAttribute("readyProjectRate", percentage(readyProjects, projectList.size()));
-        model.addAttribute("jobSuccessRate", percentage(succeededJobs, finishedJobs));
-        model.addAttribute("publicationSuccessRate", percentage(publishedRecords, completedPublications));
-        model.addAttribute("activeAccountRate", percentage(activeAccounts, accountList.size()));
+        model.addAttribute("publicationCount", snapshot.publicationCount());
+        model.addAttribute("projectActivityCount", snapshot.projectActivityCount());
+        model.addAttribute("articleActivityCount", snapshot.articleActivityCount());
+        model.addAttribute("jobActivityCount", snapshot.jobActivityCount());
+        model.addAttribute("publicationActivityCount", snapshot.publicationActivityCount());
+        model.addAttribute("readyProjectRate", percentage(
+                value(snapshot.projectsByStatus(), ProjectStatus.READY), snapshot.projectCount()));
+        model.addAttribute("jobSuccessRate", percentage(succeededJobs, succeededJobs + failedJobs));
+        model.addAttribute("publicationSuccessRate", percentage(
+                publishedRecords, publishedRecords + failedPublications));
+        model.addAttribute("activeAccountRate", percentage(activeAccounts, snapshot.accountCount()));
         model.addAttribute("activeAccountCount", activeAccounts);
-        model.addAttribute("accountCount", accountList.size());
+        model.addAttribute("accountCount", snapshot.accountCount());
         model.addAttribute("publishableArticleCount", publishableArticles);
-        model.addAttribute("coveredChannelCount", publicationList.stream()
-                .filter(record -> record.status() == PublicationStatus.PUBLISHED)
-                .map(PublicationRecord::channelType).distinct().count());
+        model.addAttribute("coveredChannelCount", snapshot.coveredChannelCount());
         model.addAttribute("supportedChannelCount", ChannelCatalog.all().size());
         model.addAttribute("failedJobCount", failedJobs);
         model.addAttribute("failedPublicationCount", failedPublications);
-        model.addAttribute("disabledAccountCount", accountList.size() - activeAccounts);
+        model.addAttribute("disabledAccountCount",
+                value(snapshot.accountsByStatus(), ChannelAccountStatus.DISABLED));
         model.addAttribute("systemStatus", systemStatus(activeJobs, failedJobs, failedPublications));
         model.addAttribute("systemStatusTone", systemStatusTone(failedJobs, failedPublications));
-        model.addAttribute("projectStatus", projectStatus(projectList));
-        model.addAttribute("articleStatus", articleStatus(articleList));
-        model.addAttribute("jobStatus", jobStatus(jobList));
-        model.addAttribute("publicationStatus", publicationStatus(publicationList));
-        model.addAttribute("sourceStatus", sourceStatus(articleList));
-        model.addAttribute("channelPerformance", channelPerformance(publicationList));
+        model.addAttribute("projectStatus", projectStatus(snapshot));
+        model.addAttribute("articleStatus", articleStatus(snapshot));
+        model.addAttribute("jobStatus", jobStatus(snapshot));
+        model.addAttribute("publicationStatus", publicationStatus(snapshot));
+        model.addAttribute("sourceStatus", sourceStatus(snapshot));
+        model.addAttribute("channelPerformance", channelPerformance(snapshot));
         model.addAttribute("recentJobs", jobList.stream().limit(8).toList());
         model.addAttribute("recentPublications", publicationList.stream().limit(8).toList());
         model.addAttribute("articleNames", articleNames(articleList));
         model.addAttribute("channelNames", channelNames());
+        model.addAttribute("jobStatusNames", jobStatusNames());
+        model.addAttribute("jobTypeNames", jobTypeNames());
+        model.addAttribute("publicationStatusNames", publicationStatusNames());
         model.addAttribute("alerts", alerts(failedJobs, failedPublications,
-                accountList.size() - activeAccounts, activeJobs));
-        return "monitoring";
+                value(snapshot.accountsByStatus(), ChannelAccountStatus.DISABLED), activeJobs, window.label()));
     }
 
-    private List<MonitorBar> projectStatus(List<io.contentpublisher.platform.domain.Project> projects) {
+    private List<MonitorBar> projectStatus(MonitoringSnapshot snapshot) {
         return List.of(
-                bar("就绪", count(projects, item -> item.status() == ProjectStatus.READY), projects.size(), "success"),
-                bar("分析中", count(projects, item -> item.status() == ProjectStatus.ANALYZING), projects.size(), "primary"),
-                bar("失败", count(projects, item -> item.status() == ProjectStatus.FAILED), projects.size(), "danger")
+                bar("就绪", value(snapshot.projectsByStatus(), ProjectStatus.READY), snapshot.projectCount(), "success"),
+                bar("分析中", value(snapshot.projectsByStatus(), ProjectStatus.ANALYZING), snapshot.projectCount(), "primary"),
+                bar("失败", value(snapshot.projectsByStatus(), ProjectStatus.FAILED), snapshot.projectCount(), "danger")
         );
     }
 
-    private List<MonitorBar> articleStatus(List<io.contentpublisher.platform.domain.Article> articles) {
+    private List<MonitorBar> articleStatus(MonitoringSnapshot snapshot) {
         return List.of(
-                bar("草稿", count(articles, item -> item.status() == ArticleStatus.DRAFT), articles.size(), "warning"),
-                bar("已审核", count(articles, item -> item.status() == ArticleStatus.APPROVED), articles.size(), "primary"),
-                bar("已发布", count(articles, item -> item.status() == ArticleStatus.PUBLISHED), articles.size(), "success"),
-                bar("已驳回", count(articles, item -> item.status() == ArticleStatus.REJECTED), articles.size(), "danger")
+                bar("草稿", value(snapshot.articlesByStatus(), ArticleStatus.DRAFT), snapshot.articleCount(), "warning"),
+                bar("已审核", value(snapshot.articlesByStatus(), ArticleStatus.APPROVED), snapshot.articleCount(), "primary"),
+                bar("已发布", value(snapshot.articlesByStatus(), ArticleStatus.PUBLISHED), snapshot.articleCount(), "success"),
+                bar("已驳回", value(snapshot.articlesByStatus(), ArticleStatus.REJECTED), snapshot.articleCount(), "danger")
         );
     }
 
-    private List<MonitorBar> jobStatus(List<io.contentpublisher.platform.domain.Job> jobs) {
+    private List<MonitorBar> jobStatus(MonitoringSnapshot snapshot) {
         return List.of(
-                bar("等待", count(jobs, item -> item.status() == JobStatus.PENDING), jobs.size(), "muted"),
-                bar("运行中", count(jobs, item -> item.status() == JobStatus.RUNNING), jobs.size(), "primary"),
-                bar("重试等待", count(jobs, item -> item.status() == JobStatus.RETRY_WAIT), jobs.size(), "warning"),
-                bar("成功", count(jobs, item -> item.status() == JobStatus.SUCCEEDED), jobs.size(), "success"),
-                bar("失败", count(jobs, item -> item.status() == JobStatus.FAILED), jobs.size(), "danger")
+                bar("等待", value(snapshot.jobsByStatus(), JobStatus.PENDING), snapshot.jobCount(), "muted"),
+                bar("运行中", value(snapshot.jobsByStatus(), JobStatus.RUNNING), snapshot.jobCount(), "primary"),
+                bar("重试等待", value(snapshot.jobsByStatus(), JobStatus.RETRY_WAIT), snapshot.jobCount(), "warning"),
+                bar("成功", value(snapshot.jobsByStatus(), JobStatus.SUCCEEDED), snapshot.jobCount(), "success"),
+                bar("失败", value(snapshot.jobsByStatus(), JobStatus.FAILED), snapshot.jobCount(), "danger")
         );
     }
 
-    private List<MonitorBar> publicationStatus(List<PublicationRecord> records) {
+    private List<MonitorBar> publicationStatus(MonitoringSnapshot snapshot) {
         return List.of(
-                bar("发布中", count(records, item -> item.status() == PublicationStatus.PUBLISHING),
-                        records.size(), "primary"),
-                bar("发布成功", count(records, item -> item.status() == PublicationStatus.PUBLISHED),
-                        records.size(), "success"),
-                bar("发布失败", count(records, item -> item.status() == PublicationStatus.FAILED),
-                        records.size(), "danger")
+                bar("发布中", value(snapshot.publicationsByStatus(), PublicationStatus.PUBLISHING),
+                        snapshot.publicationCount(), "primary"),
+                bar("发布成功", value(snapshot.publicationsByStatus(), PublicationStatus.PUBLISHED),
+                        snapshot.publicationCount(), "success"),
+                bar("发布失败", value(snapshot.publicationsByStatus(), PublicationStatus.FAILED),
+                        snapshot.publicationCount(), "danger")
         );
     }
 
-    private List<MonitorBar> sourceStatus(List<io.contentpublisher.platform.domain.Article> articles) {
+    private List<MonitorBar> sourceStatus(MonitoringSnapshot snapshot) {
         return List.of(
-                bar("Git 项目", count(articles, item -> item.sourceType() == ArticleSourceType.GIT),
-                        articles.size(), "primary"),
-                bar("主题教程", count(articles, item -> item.sourceType() == ArticleSourceType.TOPIC),
-                        articles.size(), "success"),
-                bar("网站推荐", count(articles, item -> item.sourceType() == ArticleSourceType.WEBSITE),
-                        articles.size(), "warning")
+                bar("Git 项目", value(snapshot.articlesBySource(), ArticleSourceType.GIT),
+                        snapshot.articleCount(), "primary"),
+                bar("主题教程", value(snapshot.articlesBySource(), ArticleSourceType.TOPIC),
+                        snapshot.articleCount(), "success"),
+                bar("网站推荐", value(snapshot.articlesBySource(), ArticleSourceType.WEBSITE),
+                        snapshot.articleCount(), "warning")
         );
     }
 
-    private List<ChannelMetric> channelPerformance(List<PublicationRecord> records) {
-        Map<ChannelType, List<PublicationRecord>> grouped = new EnumMap<>(ChannelType.class);
-        records.forEach(record -> grouped.computeIfAbsent(record.channelType(), ignored -> new ArrayList<>()).add(record));
-        return grouped.entrySet().stream().map(entry -> {
-            long published = count(entry.getValue(), item -> item.status() == PublicationStatus.PUBLISHED);
-            long failed = count(entry.getValue(), item -> item.status() == PublicationStatus.FAILED);
-            return new ChannelMetric(entry.getKey(), ChannelCatalog.definition(entry.getKey()).displayName(),
-                    entry.getValue().size(), published, failed, percentage(published, published + failed));
-        }).sorted(Comparator.comparingLong(ChannelMetric::total).reversed()
-                .thenComparing(ChannelMetric::displayName)).limit(8).toList();
+    private List<ChannelMetric> channelPerformance(MonitoringSnapshot snapshot) {
+        return snapshot.channelPerformance().stream().map(item -> new ChannelMetric(item.channelType(),
+                        ChannelCatalog.definition(item.channelType()).displayName(), item.total(), item.published(),
+                        item.failed(), percentage(item.published(), item.published() + item.failed())))
+                .sorted(Comparator.comparingLong(ChannelMetric::total).reversed()
+                        .thenComparing(ChannelMetric::displayName)).limit(8).toList();
     }
 
     private List<MonitorAlert> alerts(long failedJobs, long failedPublications, long disabledAccounts,
-                                      long activeJobs) {
+                                      long activeJobs, String rangeLabel) {
         List<MonitorAlert> alerts = new ArrayList<>();
         if (failedJobs > 0) alerts.add(new MonitorAlert("danger", "后台任务失败", failedJobs,
-                "检查失败原因并决定是否重新发起任务", "/projects"));
+                rangeLabel + "内存在失败任务，请检查原因", "/projects"));
         if (failedPublications > 0) alerts.add(new MonitorAlert("danger", "发布记录失败", failedPublications,
-                "核对渠道凭据、接口返回和内容限制", "/publishing"));
+                rangeLabel + "内存在发布失败，请核对渠道与内容限制", "/publishing"));
         if (disabledAccounts > 0) alerts.add(new MonitorAlert("warning", "渠道账号停用", disabledAccounts,
                 "停用账号不会接收新的自动发布任务", "/channels"));
         if (activeJobs > 0) alerts.add(new MonitorAlert("primary", "任务正在处理", activeJobs,
                 "队列正在推进，页面会自动刷新", "/projects"));
         if (alerts.isEmpty()) alerts.add(new MonitorAlert("success", "当前无运行异常", 0,
-                "任务、渠道与发布链路均未发现待处理告警", "/monitoring"));
+                rangeLabel + "内任务、渠道与发布链路均未发现异常", "/monitoring"));
         return alerts;
     }
 
@@ -201,6 +211,22 @@ public class PortalMonitoringController {
         Map<ChannelType, String> names = new EnumMap<>(ChannelType.class);
         ChannelCatalog.all().forEach(channel -> names.put(channel.type(), channel.displayName()));
         return names;
+    }
+
+    private Map<JobStatus, String> jobStatusNames() {
+        return Map.of(JobStatus.PENDING, "等待", JobStatus.RUNNING, "运行中", JobStatus.RETRY_WAIT, "等待重试",
+                JobStatus.SUCCEEDED, "成功", JobStatus.FAILED, "失败");
+    }
+
+    private Map<JobType, String> jobTypeNames() {
+        return Map.of(JobType.IMPORT_PROJECT, "导入项目", JobType.GENERATE_ARTICLE, "生成项目文章",
+                JobType.GENERATE_TOPIC_ARTICLE, "生成主题教程",
+                JobType.GENERATE_WEBSITE_ARTICLE, "生成网站推荐", JobType.PUBLISH_ARTICLE, "发布文章");
+    }
+
+    private Map<PublicationStatus, String> publicationStatusNames() {
+        return Map.of(PublicationStatus.PUBLISHING, "发布中", PublicationStatus.PUBLISHED, "已发布",
+                PublicationStatus.FAILED, "发布失败");
     }
 
     private String systemStatus(long activeJobs, long failedJobs, long failedPublications) {
@@ -222,12 +248,8 @@ public class PortalMonitoringController {
         return (int) Math.round(value * 100.0 / total);
     }
 
-    private boolean isRecent(Instant value, Instant threshold) {
-        return value != null && !value.isBefore(threshold);
-    }
-
-    private <T> long count(List<T> items, java.util.function.Predicate<T> predicate) {
-        return items.stream().filter(predicate).count();
+    private <E extends Enum<E>> long value(Map<E, Long> values, E key) {
+        return values.getOrDefault(key, 0L);
     }
 
     public record MonitorBar(String label, long value, long total, int percentage, String tone) {

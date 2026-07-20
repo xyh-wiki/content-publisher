@@ -139,6 +139,8 @@ public class SecurityConfiguration {
                     .hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/articles/**", "/api/v1/publications/**")
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/v1/monitoring/**")
+                    .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/channel-accounts/**").hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/articles/*/publications")
                     .hasAnyRole("EDITOR", "ADMIN")

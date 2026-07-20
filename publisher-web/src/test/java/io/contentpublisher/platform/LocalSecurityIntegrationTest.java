@@ -77,8 +77,48 @@ class LocalSecurityIntegrationTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("全链路监控大屏")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-screen")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("发布成功率")));
+        mockMvc.perform(get("/monitoring?range=7d").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("近 7 天")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-live-url")));
+        mockMvc.perform(get("/monitoring/live?range=7d").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-live-region")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("渠道发布表现")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("<!doctype html>"))));
+        mockMvc.perform(get("/api/v1/monitoring/summary?range=30d").session(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.window").value("DAYS_30"))
+                .andExpect(jsonPath("$.projectCount").isNumber())
+                .andExpect(jsonPath("$.publicationsByStatus.PUBLISHED").isNumber());
         mockMvc.perform(get("/api/v1/projects/" + UUID.randomUUID()).session(session))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldUseExactDatabaseAggregatesBeyondRecentListLimit() throws Exception {
+        MockHttpSession session = login();
+        long baseline = jdbcTemplate.queryForObject(
+                "select count(*) from projects where tenant_id = 'tenant-local'", Long.class);
+        String marker = "monitoring-exact-" + UUID.randomUUID();
+        Instant now = Instant.parse("2026-07-20T06:00:00Z");
+        try {
+            for (int index = 0; index < 105; index++) {
+                jdbcTemplate.update("insert into projects (id, tenant_id, git_url, name, default_branch, "
+                                + "languages_json, status, created_by, updated_by, created_at, updated_at) "
+                                + "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        UUID.randomUUID(), "tenant-local", "https://example.com/" + marker + "-" + index + ".git",
+                        marker + "-" + index, "main", "[]", "READY", "admin", "admin", now, now);
+            }
+
+            mockMvc.perform(get("/api/v1/monitoring/summary?range=24h").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.projectCount").value(baseline + 105))
+                    .andExpect(jsonPath("$.projectsByStatus.READY").isNumber());
+        } finally {
+            jdbcTemplate.update("delete from projects where name like ?", marker + "%");
+        }
     }
 
     @Test

@@ -111,19 +111,51 @@
     if (monitorScreen) {
         const clock = monitorScreen.querySelector('[data-monitor-clock]');
         const countdown = monitorScreen.querySelector('[data-monitor-countdown]');
+        const refreshState = monitorScreen.querySelector('[data-monitor-refresh-state]');
         const refreshSeconds = Number(monitorScreen.dataset.refreshSeconds || 60);
         let remaining = refreshSeconds;
+        let refreshing = false;
+        const refreshMonitor = async () => {
+            if (refreshing) return;
+            refreshing = true;
+            monitorScreen.classList.add('monitor-refreshing');
+            monitorScreen.classList.remove('monitor-refresh-failed', 'monitor-refresh-ok');
+            if (refreshState) refreshState.textContent = '正在同步';
+            try {
+                const url = new URL(monitorScreen.dataset.monitorLiveUrl, window.location.origin);
+                url.searchParams.set('range', monitorScreen.dataset.monitorRange || '24h');
+                const response = await fetch(url, {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {'Accept': 'text/html', 'X-Requested-With': 'XMLHttpRequest'}
+                });
+                if (!response.ok) throw new Error(`刷新请求失败: ${response.status}`);
+                const documentFragment = new DOMParser().parseFromString(await response.text(), 'text/html');
+                const nextRegion = documentFragment.querySelector('[data-monitor-live-region]');
+                const currentRegion = monitorScreen.querySelector('[data-monitor-live-region]');
+                if (!nextRegion || !currentRegion) throw new Error('刷新内容不完整');
+                currentRegion.replaceWith(nextRegion);
+                remaining = refreshSeconds;
+                monitorScreen.classList.add('monitor-refresh-ok');
+                if (refreshState) refreshState.textContent = '刚刚更新';
+            } catch (_error) {
+                remaining = Math.min(15, refreshSeconds);
+                monitorScreen.classList.add('monitor-refresh-failed');
+                if (refreshState) refreshState.textContent = '更新失败，准备重试';
+            } finally {
+                monitorScreen.classList.remove('monitor-refreshing');
+                refreshing = false;
+            }
+        };
         const tick = () => {
             if (clock) clock.textContent = new Date().toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
             remaining -= 1;
-            if (remaining <= 0) window.location.reload();
+            if (remaining <= 0) refreshMonitor();
             if (countdown) countdown.textContent = String(Math.max(remaining, 0));
         };
         window.setInterval(tick, 1000);
         tick();
-        monitorScreen.querySelector('[data-monitor-refresh-now]')?.addEventListener('click', () => {
-            window.location.reload();
-        });
+        monitorScreen.querySelector('[data-monitor-refresh-now]')?.addEventListener('click', refreshMonitor);
         monitorScreen.querySelector('[data-monitor-fullscreen]')?.addEventListener('click', async () => {
             try {
                 if (document.fullscreenElement) await document.exitFullscreen();

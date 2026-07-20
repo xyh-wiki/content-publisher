@@ -5,6 +5,7 @@ import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.PlatformContentAdapter;
+import io.contentpublisher.platform.application.MonitoringApplicationService;
 import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.application.port.AiEndpointPolicy;
 import io.contentpublisher.platform.application.port.AiProviderSettingsRepository;
@@ -22,6 +23,7 @@ import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
 import io.contentpublisher.platform.application.port.ChannelPublisher;
 import io.contentpublisher.platform.application.port.WebsiteInspector;
+import io.contentpublisher.platform.application.port.MonitoringQuery;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -97,6 +99,11 @@ public class InfrastructureConfiguration {
                                                 AuditRecorder auditRecorder, Clock clock, JobProperties properties) {
         return new JobApplicationService(jobs, projects, publishing, auditRecorder, clock,
                 properties.maxActiveJobsPerTenant(), properties.maxAttempts());
+    }
+
+    @Bean
+    MonitoringApplicationService monitoringApplicationService(MonitoringQuery monitoring, Clock clock) {
+        return new MonitoringApplicationService(monitoring, clock);
     }
 
     @Bean
