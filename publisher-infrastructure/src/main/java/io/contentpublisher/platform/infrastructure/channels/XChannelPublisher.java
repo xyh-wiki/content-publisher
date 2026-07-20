@@ -28,7 +28,7 @@ public class XChannelPublisher extends AbstractHttpChannelPublisher {
 
     @Override
     public PublishResult publish(ChannelAccount account, PublishContent content, Map<String, String> credentials) {
-        String text = ChannelContentFormatter.promotionForX(content.article(), content.canonicalUrl());
+        String text = content.adaptedContent().body();
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/2/tweets"))
                 .timeout(properties.timeout()).header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + credentials.get("accessToken"))

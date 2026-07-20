@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow">
+    <title>AI 服务 · Content Publisher</title><link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}"><link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
+<body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('ai')}"></aside><div class="app-main">
+    <header th:replace="~{fragments/app-shell :: topbar('AI 服务', '租户级 OpenAI 兼容接口与安全策略')}"></header><main class="page-content narrow">
+        <section class="page-header"><div><p class="section-kicker">AI provider</p><h2>OpenAI 兼容接口</h2><p>配置当前租户的内容生成服务。保存后立即生效，API Key 只以加密形式存入 PostgreSQL。</p></div><div class="header-actions"><a class="secondary-link" th:href="@{/projects}">返回内容中心</a></div></section>
+        <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
+        <section class="card settings-summary"><div><span>配置来源</span><strong th:text="${savedInDatabase} ? 'PostgreSQL 租户配置' : '服务器环境默认值'">来源</strong></div><div><span>API Key</span><strong th:text="${apiKeyConfigured} ? '已安全配置' : '未配置'">状态</strong></div><div><span>最后更新</span><strong th:text="${updatedAt ?: '-'}">时间</strong></div></section>
+        <section class="card"><div class="card-header"><div><p class="section-kicker">Connection</p><h3>服务连接与模型</h3><p>兼容 OpenAI Chat Completions 协议的服务均可接入。</p></div><span class="service-badge">ADMIN only</span></div>
+            <form class="stack-form" th:action="@{/settings/ai}" th:object="${aiSettingsForm}" method="post" autocomplete="off"><input type="hidden" th:field="*{expectedVersion}">
+                <label class="toggle-row"><span><strong>启用 AI 内容生成</strong><small>关闭后不会向外部 AI 服务发送任何仓库内容。</small></span><input th:field="*{enabled}" type="checkbox"></label>
+                <div class="field"><label for="baseUrl">Base URL</label><input id="baseUrl" th:field="*{baseUrl}" type="url" maxlength="2048" placeholder="https://api.openai.com/v1" spellcheck="false" required>
+                    <small>必须使用 HTTPS。系统调用 <code>/chat/completions</code>，保存和请求前均执行域名、DNS 与私网地址检查。</small><small class="field-error" th:if="${#fields.hasErrors('baseUrl')}" th:errors="*{baseUrl}"></small></div>
+                <div class="field"><label for="apiKey">API Key</label><input id="apiKey" th:field="*{apiKey}" type="password" maxlength="8000" autocomplete="new-password" placeholder="留空则保留当前 API Key">
+                    <small>提交后使用 AES-256-GCM 加密，页面、接口和日志均不回显明文。</small></div>
+                <label class="check-row"><input th:field="*{clearApiKey}" type="checkbox"><span>清除已保存的 API Key（仅适用于无需鉴权的兼容服务）</span></label>
+                <div class="form-grid"><div class="field"><label for="model">模型名称</label><input id="model" th:field="*{model}" maxlength="200" placeholder="gpt-4.1-mini" required></div>
+                    <div class="field"><label for="timeoutSeconds">请求超时（秒）</label><input id="timeoutSeconds" th:field="*{timeoutSeconds}" type="number" min="5" max="300" required></div></div>
+                <div class="field"><label for="temperature">生成温度</label><input id="temperature" th:field="*{temperature}" type="number" min="0" max="1" step="0.05" required><small>技术内容建议 0.1–0.3，减少事实漂移和格式波动。</small></div>
+                <div class="form-footer"><small>保存前将重新执行端点安全检查。</small><button class="primary-button" type="submit">安全保存配置</button></div></form></section>
+        <section class="card security-grid"><div><strong>凭据保护</strong><p>密钥只以密文存储，主密钥独立保存在服务器受限环境文件。</p></div><div><strong>SSRF 防护</strong><p>禁止带凭据 URL、HTTP 明文、私网、回环和链路本地地址。</p></div><div><strong>租户隔离</strong><p>每个租户拥有独立配置和加密上下文，密文不能跨租户替换。</p></div></section>
+    </main></div></div></body></html>

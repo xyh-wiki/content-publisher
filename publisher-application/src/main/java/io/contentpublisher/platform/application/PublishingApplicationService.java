@@ -6,7 +6,9 @@ import io.contentpublisher.platform.application.port.ChannelAccountRepository;
 import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
 import io.contentpublisher.platform.application.port.ChannelPublisher;
 import io.contentpublisher.platform.application.port.CredentialVault;
+import io.contentpublisher.platform.application.port.ManualPublicationRepository;
 import io.contentpublisher.platform.application.port.PublicationRepository;
+import io.contentpublisher.platform.domain.AdaptedContent;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleStatus;
@@ -14,6 +16,8 @@ import io.contentpublisher.platform.domain.ArticleVersion;
 import io.contentpublisher.platform.domain.ChannelAccount;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.ContentFormat;
+import io.contentpublisher.platform.domain.ManualPublication;
 import io.contentpublisher.platform.domain.Publication;
 import io.contentpublisher.platform.domain.PublicationStatus;
 
@@ -23,6 +27,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.EnumMap;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -32,34 +38,43 @@ public final class PublishingApplicationService {
     private final ArticleRepository articles;
     private final ChannelAccountRepository accounts;
     private final PublicationRepository publications;
+    private final ManualPublicationRepository manualPublications;
     private final CredentialVault credentialVault;
     private final ChannelEndpointPolicy endpointPolicy;
     private final Map<ChannelType, ChannelPublisher> publishers;
     private final AuditRecorder auditRecorder;
+    private final PlatformContentAdapter contentAdapter;
     private final Clock clock;
 
     public PublishingApplicationService(ArticleRepository articles,
                                         ChannelAccountRepository accounts,
                                         PublicationRepository publications,
+                                        ManualPublicationRepository manualPublications,
                                         CredentialVault credentialVault,
                                         ChannelEndpointPolicy endpointPolicy,
                                         List<ChannelPublisher> publishers,
                                         AuditRecorder auditRecorder,
+                                        PlatformContentAdapter contentAdapter,
                                         Clock clock) {
         this.articles = articles;
         this.accounts = accounts;
         this.publications = publications;
+        this.manualPublications = manualPublications;
         this.credentialVault = credentialVault;
         this.endpointPolicy = endpointPolicy;
         this.publishers = new EnumMap<>(ChannelType.class);
         publishers.forEach(publisher -> this.publishers.put(publisher.channelType(), publisher));
         this.auditRecorder = auditRecorder;
+        this.contentAdapter = contentAdapter;
         this.clock = clock;
     }
 
     public ChannelAccount createAccount(ActorContext actor, ChannelType type, String displayName,
                                         String baseUrl, Map<String, String> credentials, String idempotencyKey) {
         validateIdempotencyKey(idempotencyKey);
+        if (!ChannelCatalog.definition(type).apiSupported()) {
+            throw new ApplicationException("CHANNEL_MANUAL_ONLY", "该渠道采用跳转登录和人工发布，无需配置 API 账号");
+        }
         String name = requireText(displayName, "渠道账号名称不能为空", 120);
         Map<String, String> validatedCredentials = validateCredentials(type, credentials);
         String normalizedBaseUrl = endpointPolicy.validateAndNormalize(type, baseUrl);
@@ -140,6 +155,85 @@ public final class PublishingApplicationService {
         return articles.findVersions(actor.tenantId(), articleId);
     }
 
+    public AdaptedContent adaptContent(ActorContext actor, UUID articleId, ChannelType channelType,
+                                       String canonicalUrl) {
+        Article article = getArticle(actor, articleId);
+        return contentAdapter.adapt(article, channelType, validateCanonicalUrl(canonicalUrl));
+    }
+
+    public List<ManualPublication> getManualPublications(ActorContext actor, UUID articleId) {
+        getArticle(actor, articleId);
+        return manualPublications.findByArticle(actor.tenantId(), articleId);
+    }
+
+    public List<ManualPublication> listRecentManualPublications(ActorContext actor, int limit) {
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("列表查询数量必须在 1 到 100 之间");
+        return manualPublications.findRecent(actor.tenantId(), limit);
+    }
+
+    public List<PublicationRecord> getArticlePublicationRecords(ActorContext actor, UUID articleId) {
+        getArticle(actor, articleId);
+        Map<UUID, String> accountNames = accountNames(actor);
+        List<PublicationRecord> records = new java.util.ArrayList<>();
+        publications.findApiByArticle(actor.tenantId(), articleId).stream()
+                .map(publication -> toRecord(publication, accountNames)).forEach(records::add);
+        manualPublications.findByArticle(actor.tenantId(), articleId).stream()
+                .map(this::toRecord).forEach(records::add);
+        return sortRecords(records);
+    }
+
+    public List<PublicationRecord> listPublicationRecords(ActorContext actor, int limit) {
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("列表查询数量必须在 1 到 100 之间");
+        Map<UUID, String> accountNames = accountNames(actor);
+        List<PublicationRecord> records = new java.util.ArrayList<>();
+        publications.findRecentApi(actor.tenantId(), limit).stream()
+                .map(publication -> toRecord(publication, accountNames)).forEach(records::add);
+        manualPublications.findRecent(actor.tenantId(), limit).stream()
+                .map(this::toRecord).forEach(records::add);
+        return sortRecords(records).stream().limit(limit).toList();
+    }
+
+    public List<PublicationRecord> listPublicationRecordsForArticles(ActorContext actor, List<UUID> articleIds) {
+        if (articleIds == null || articleIds.isEmpty()) return List.of();
+        List<UUID> normalizedIds = articleIds.stream().distinct().toList();
+        if (normalizedIds.size() > 50) throw new IllegalArgumentException("发布矩阵最多查询 50 篇文章");
+        Map<UUID, String> accountNames = accountNames(actor);
+        List<PublicationRecord> records = new java.util.ArrayList<>();
+        publications.findApiByArticles(actor.tenantId(), normalizedIds).stream()
+                .map(publication -> toRecord(publication, accountNames)).forEach(records::add);
+        manualPublications.findByArticles(actor.tenantId(), normalizedIds).stream()
+                .map(this::toRecord).forEach(records::add);
+        return sortRecords(records);
+    }
+
+    public ManualPublication completeManualPublication(ActorContext actor, UUID articleId, ChannelType channelType,
+                                                       String adaptedTitle, String adaptedContent,
+                                                       ContentFormat contentFormat, String externalUrl) {
+        Article article = getArticle(actor, articleId);
+        if (article.status() != ArticleStatus.APPROVED && article.status() != ArticleStatus.PUBLISHED) {
+            throw new ApplicationException("ARTICLE_NOT_APPROVED", "文章必须审核通过后才能记录发布结果");
+        }
+        ChannelCatalog.ChannelDefinition definition = ChannelCatalog.definition(channelType);
+        if (!definition.manualAvailable()) {
+            throw new ApplicationException("MANUAL_PUBLISH_UNAVAILABLE", "该渠道尚未配置安全的人工发布入口");
+        }
+        if (contentFormat != definition.contentFormat()) {
+            throw new ApplicationException("CONTENT_FORMAT_INVALID", "发布内容格式与渠道要求不一致");
+        }
+        String title = requireText(adaptedTitle, "平台标题不能为空", 500);
+        String content = requireText(adaptedContent, "平台发布内容不能为空", definition.characterLimit());
+        String verifiedExternalUrl = validatePublishedUrl(externalUrl, definition);
+        Instant now = clock.instant();
+        ManualPublication saved = manualPublications.save(new ManualPublication(UUID.randomUUID(), actor.tenantId(),
+                articleId, channelType, contentFormat, title, content, verifiedExternalUrl, actor.subject(), now));
+        if (article.status() != ArticleStatus.PUBLISHED) {
+            updateArticleStatus(article, ArticleStatus.PUBLISHED, actor.subject());
+        }
+        auditRecorder.record(actor, "ARTICLE_MANUALLY_PUBLISHED", "MANUAL_PUBLICATION", saved.id(),
+                Map.of("articleId", articleId.toString(), "channelType", channelType.name()));
+        return saved;
+    }
+
     public Article updateArticle(ActorContext actor, UUID articleId, int expectedVersion, String title,
                                  String summary, String markdown, List<String> keywords) {
         Article article = getArticle(actor, articleId);
@@ -155,7 +249,7 @@ public final class PublishingApplicationService {
         List<String> normalizedKeywords = normalizeKeywords(keywords);
         int nextVersion = expectedVersion + 1;
         Instant now = clock.instant();
-        Article updated = new Article(article.id(), article.tenantId(), article.projectId(), article.generationJobId(),
+        Article updated = new Article(article.id(), article.tenantId(), article.origin(), article.generationJobId(),
                 normalizedTitle, normalizedSummary, normalizedMarkdown, normalizedKeywords, article.language(),
                 article.sourceRevision(), nextVersion, ArticleStatus.DRAFT, article.createdBy(), actor.subject(),
                 article.createdAt(), now);
@@ -231,7 +325,8 @@ public final class PublishingApplicationService {
                 null, null, null, now, now));
         ChannelPublisher.PublishResult result;
         try {
-            result = publisher.publish(account, new ChannelPublisher.PublishContent(article, canonicalUrl),
+            AdaptedContent adaptedContent = contentAdapter.adapt(article, account.type(), canonicalUrl);
+            result = publisher.publish(account, new ChannelPublisher.PublishContent(article, adaptedContent, canonicalUrl),
                     credentialVault.decrypt(account.encryptedCredentials()));
         } catch (ApplicationException exception) {
             Instant failedAt = clock.instant();
@@ -262,6 +357,32 @@ public final class PublishingApplicationService {
                 .orElseThrow(() -> new ApplicationException("PUBLICATION_NOT_FOUND", "发布记录不存在"));
     }
 
+    private Map<UUID, String> accountNames(ActorContext actor) {
+        Map<UUID, String> names = new HashMap<>();
+        accounts.findAll(actor.tenantId()).forEach(account -> names.put(account.id(), account.displayName()));
+        return names;
+    }
+
+    private PublicationRecord toRecord(Publication publication, Map<UUID, String> accountNames) {
+        return new PublicationRecord(publication.id(), publication.articleId(), publication.channelType(),
+                PublicationMethod.API, publication.status(), publication.channelAccountId(),
+                accountNames.get(publication.channelAccountId()), ChannelCatalog.definition(publication.channelType()).contentFormat(),
+                publication.externalUrl(), publication.errorCode(), publication.errorMessage(), null,
+                publication.createdAt(), publication.updatedAt());
+    }
+
+    private PublicationRecord toRecord(ManualPublication publication) {
+        return new PublicationRecord(publication.id(), publication.articleId(), publication.channelType(),
+                PublicationMethod.MANUAL, PublicationStatus.PUBLISHED, null, null, publication.contentFormat(),
+                publication.externalUrl(), null, null, publication.publishedBy(),
+                publication.publishedAt(), publication.publishedAt());
+    }
+
+    private List<PublicationRecord> sortRecords(List<PublicationRecord> records) {
+        return records.stream().sorted(Comparator.comparing(PublicationRecord::updatedAt).reversed()
+                .thenComparing(PublicationRecord::id)).toList();
+    }
+
     public String validateCanonicalUrl(String value) {
         if (value == null || value.isBlank()) return null;
         try {
@@ -281,8 +402,20 @@ public final class PublishingApplicationService {
         }
     }
 
+    private String validatePublishedUrl(String value, ChannelCatalog.ChannelDefinition definition) {
+        String normalized = validateCanonicalUrl(requireText(value, "发布后的文章链接不能为空", 2048));
+        java.net.URI uri = java.net.URI.create(normalized);
+        String host = uri.getHost().toLowerCase(java.util.Locale.ROOT);
+        boolean allowed = definition.publishedHosts().stream()
+                .anyMatch(domain -> host.equals(domain) || host.endsWith("." + domain));
+        if (!allowed) {
+            throw new ApplicationException("PUBLISHED_URL_REJECTED", "发布结果链接与所选渠道域名不匹配");
+        }
+        return normalized;
+    }
+
     private Article updateArticleStatus(Article article, ArticleStatus status, String subject) {
-        return articles.save(new Article(article.id(), article.tenantId(), article.projectId(), article.generationJobId(),
+        return articles.save(new Article(article.id(), article.tenantId(), article.origin(), article.generationJobId(),
                 article.title(), article.summary(), article.markdown(), article.keywords(), article.language(),
                 article.sourceRevision(), article.currentVersion(), status, article.createdBy(), subject,
                 article.createdAt(), clock.instant()));
@@ -301,6 +434,9 @@ public final class PublishingApplicationService {
             case MEDIUM -> List.of("token", "authorId");
             case MASTODON -> List.of("accessToken");
             case GHOST -> List.of("adminApiKey");
+            case XIAOHONGSHU, CSDN, JUEJIN, ZHIHU, CNBLOGS, SEGMENTFAULT, V2EX, OSCHINA,
+                    LINKEDIN, WECHAT_OFFICIAL, JIANSHU, TOUTIAO, BILIBILI_COLUMN, BLOG_51CTO,
+                    TENCENT_CLOUD, ALIBABA_CLOUD, HUAWEI_CLOUD -> List.of();
         };
         if (!source.keySet().equals(new java.util.HashSet<>(required))) {
             throw new ApplicationException("CHANNEL_CREDENTIALS_INVALID",

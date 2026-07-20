@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <title>登录 · Content Publisher</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}">
+</head>
+<body class="auth-page">
+<main class="auth-shell">
+    <section class="brand-panel" aria-label="平台介绍">
+        <img class="brand-mark" th:src="@{/assets/logo.svg}" alt="Content Publisher">
+        <p class="eyebrow">CONTENT PUBLISHER</p>
+        <h1>让技术内容安全、准确地抵达每个渠道。</h1>
+        <p class="brand-copy">从 Git 项目事实提取、AI 受控生成、人工审核，到十个平台的官方 API 发布。</p>
+        <ul class="trust-list">
+            <li>租户级数据隔离</li>
+            <li>角色权限与审计追踪</li>
+            <li>凭据加密和安全外链</li>
+        </ul>
+    </section>
+
+    <section class="login-panel">
+        <div class="login-card">
+            <p class="eyebrow dark">安全工作台</p>
+            <h2>登录账号</h2>
+            <p class="form-intro">请输入管理员分配的用户名和密码。</p>
+
+            <div class="alert error" th:if="${param.error}">用户名或密码不正确，请重新输入。</div>
+            <div class="alert success" th:if="${param.logout}">你已安全退出系统。</div>
+            <div class="alert success" th:if="${param.passwordChanged}">密码修改成功，请使用新密码重新登录。</div>
+
+            <form th:action="@{/login}" method="post" class="login-form">
+                <label for="username">用户名</label>
+                <input id="username" name="username" type="text" autocomplete="username"
+                       maxlength="100" required autofocus>
+
+                <label for="password">密码</label>
+                <input id="password" name="password" type="password" autocomplete="current-password"
+                       maxlength="200" required>
+
+                <button type="submit">安全登录</button>
+            </form>
+
+            <p class="security-note">登录会话受 HTTPS、CSRF 和会话固定攻击防护保护。</p>
+        </div>
+    </section>
+</main>
+</body>
+</html>

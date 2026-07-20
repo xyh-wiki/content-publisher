@@ -8,6 +8,11 @@ import io.contentpublisher.platform.web.dto.PublishArticleRequest;
 import io.contentpublisher.platform.web.dto.RejectArticleRequest;
 import io.contentpublisher.platform.web.dto.UpdateArticleRequest;
 import io.contentpublisher.platform.web.dto.ArticleVersionResponse;
+import io.contentpublisher.platform.web.dto.CreateTopicArticleRequest;
+import io.contentpublisher.platform.web.dto.CreateWebsiteArticleRequest;
+import io.contentpublisher.platform.domain.GenerationPolicy;
+import io.contentpublisher.platform.domain.TopicBrief;
+import io.contentpublisher.platform.domain.WebsiteBrief;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -71,6 +76,34 @@ public class ArticleController {
                                                @Valid @RequestBody PublishArticleRequest request) {
         var job = jobs.submitPublication(actors.currentActor(), articleId, request.channelAccountId(),
                 request.canonicalUrl(), idempotencyKey);
+        return ResponseEntity.accepted().header(HttpHeaders.LOCATION, "/api/v1/jobs/" + job.id())
+                .body(JobResponse.from(job));
+    }
+
+    @PostMapping("/topic-generations")
+    public ResponseEntity<JobResponse> generateTopicArticle(
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody CreateTopicArticleRequest request) {
+        TopicBrief brief = new TopicBrief(request.topic(), request.description(), request.audience(),
+                request.articleType(), request.knowledgeLevel(), request.keywords(), request.referenceNotes());
+        GenerationPolicy policy = new GenerationPolicy(request.language(), request.tone(), request.minCharacters(),
+                request.maxCharacters(), request.maxKeywords(), brief.keywords(), request.excludedKeywords(),
+                request.requiredSections());
+        var job = jobs.submitTopicArticleGeneration(actors.currentActor(), brief, policy, idempotencyKey);
+        return ResponseEntity.accepted().header(HttpHeaders.LOCATION, "/api/v1/jobs/" + job.id())
+                .body(JobResponse.from(job));
+    }
+
+    @PostMapping("/website-generations")
+    public ResponseEntity<JobResponse> generateWebsiteArticle(
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @Valid @RequestBody CreateWebsiteArticleRequest request) {
+        WebsiteBrief brief = new WebsiteBrief(request.websiteUrl(), request.recommendationAngle(),
+                request.audience(), request.keywords());
+        GenerationPolicy policy = new GenerationPolicy(request.language(), request.tone(), request.minCharacters(),
+                request.maxCharacters(), request.maxKeywords(), brief.keywords(), request.excludedKeywords(),
+                request.requiredSections());
+        var job = jobs.submitWebsiteArticleGeneration(actors.currentActor(), brief, policy, idempotencyKey);
         return ResponseEntity.accepted().header(HttpHeaders.LOCATION, "/api/v1/jobs/" + job.id())
                 .body(JobResponse.from(job));
     }

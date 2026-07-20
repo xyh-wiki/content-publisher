@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><title>发布中心 · Content Publisher</title><link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
+<body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('publishing')}"></aside>
+    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('发布中心', '统一管理 API 与人工发布结果')}"></header>
+        <main class="page-content"><section class="page-header"><div><p class="section-kicker">Distribution operations</p><h2>多平台发布中心</h2>
+            <p>以文章和渠道为维度核对发布覆盖率，并在同一时间线查看 API 任务与人工发布记录。</p></div><div class="header-actions"><a class="secondary-link" th:href="@{/channels}">管理渠道</a><a class="primary-link" th:href="@{/projects}">创建内容</a></div></section>
+
+            <div class="metric-grid"><article class="metric-card"><span>最近发布记录</span><strong th:text="${publicationRecords.size()}">0</strong><small>API 与人工发布统一统计</small></article>
+                <article class="metric-card"><span>成功发布</span><strong th:text="${publishedCount}">0</strong><small>已取得平台发布结果</small></article>
+                <article class="metric-card"><span>API / 人工</span><strong th:text="|${apiRecordCount} / ${manualRecordCount}|">0 / 0</strong><small>两类分发路径统一留痕</small></article>
+                <article class="metric-card"><span>发布失败</span><strong th:text="${failedCount}">0</strong><small>需要核对或后续重放</small></article></div>
+
+            <section class="card"><div class="card-header"><div><p class="section-kicker">Coverage matrix</p><h3>文章 / 渠道发布矩阵</h3><p>每个单元格显示该文章在目标渠道的最新发布状态；横向滚动可查看全部平台。</p></div><span class="card-badge" th:text="|${publicationMatrix.size()} 篇内容|">0 篇内容</span></div>
+                <div class="empty-state" th:if="${#lists.isEmpty(publicationMatrix)}">暂无文章，请先从项目生成内容。</div>
+                <div class="table-wrap publication-matrix" th:unless="${#lists.isEmpty(publicationMatrix)}"><table><thead><tr><th class="matrix-article-column">文章</th><th th:each="cell : ${publicationMatrix.get(0).cells}" th:text="${cell.channel.displayName}">渠道</th></tr></thead>
+                    <tbody><tr th:each="row : ${publicationMatrix}"><td class="matrix-article-column"><a class="table-title" th:href="@{/articles/{id}(id=${row.article.id})}" th:text="${row.article.title}">文章</a><small th:text="${row.article.status}">状态</small></td>
+                        <td class="matrix-status-cell" th:each="cell : ${row.cells}"><span class="matrix-empty" th:if="${cell.latest == null}">未发布</span>
+                            <div th:if="${cell.latest != null}"><a th:if="${cell.latest.externalUrl != null}" th:href="${cell.latest.externalUrl}" target="_blank" rel="noopener noreferrer" class="matrix-result-link" title="打开发布结果">
+                                <span class="status-pill" th:classappend="| status-${cell.latest.status.name().toLowerCase()}|" th:text="${cell.latest.status}">PUBLISHED</span></a>
+                                <span th:unless="${cell.latest.externalUrl != null}" class="status-pill" th:classappend="| status-${cell.latest.status.name().toLowerCase()}|" th:text="${cell.latest.status}">FAILED</span>
+                                <small th:text="|${cell.latest.method} · ${cell.latest.updatedAt}|">API</small></div></td></tr></tbody></table></div></section>
+
+            <section class="card"><div class="card-header"><div><p class="section-kicker">Unified activity</p><h3>统一发布记录</h3><p>API 发布状态、失败原因与人工发布外链按最新更新时间合并展示。</p></div><span class="count-badge" th:text="${publicationRecords.size()}">0</span></div>
+                <div class="empty-state" th:if="${#lists.isEmpty(publicationRecords)}">尚无发布记录。</div><div class="table-wrap" th:unless="${#lists.isEmpty(publicationRecords)}"><table><thead><tr><th>文章</th><th>渠道</th><th>方式</th><th>状态</th><th>账号 / 操作人</th><th>更新时间</th><th>结果</th></tr></thead>
+                    <tbody><tr th:each="record : ${publicationRecords}"><td><a class="table-title" th:href="@{/articles/{id}(id=${record.articleId})}" th:text="${articleNames.get(record.articleId) != null ? articleNames.get(record.articleId) : record.articleId}">文章</a><small class="mono" th:text="${record.id}">id</small></td>
+                        <td><strong th:text="${channelNames.get(record.channelType)}">渠道</strong><small th:text="${record.contentFormat}">MARKDOWN</small></td><td><span class="method-badge" th:classappend="| method-${record.method.name().toLowerCase()}|" th:text="${record.method}">API</span></td>
+                        <td><span class="status-pill" th:classappend="| status-${record.status.name().toLowerCase()}|" th:text="${record.status}">PUBLISHED</span><small th:if="${record.errorCode != null}" th:text="${record.errorCode}">ERROR</small></td>
+                        <td><span th:text="${record.channelAccountName != null ? record.channelAccountName : (record.publishedBy != null ? record.publishedBy : '-')}">账号</span></td><td th:text="${record.updatedAt}">time</td>
+                        <td><a class="text-link" th:if="${record.externalUrl != null}" th:href="${record.externalUrl}" target="_blank" rel="noopener noreferrer">打开结果 ↗</a><span class="record-error" th:if="${record.externalUrl == null and record.errorMessage != null}" th:text="${record.errorMessage}">失败信息</span><span th:if="${record.externalUrl == null and record.errorMessage == null}">—</span></td></tr></tbody></table></div></section>
+
+            <section class="card"><div class="card-header"><div><p class="section-kicker">Content queue</p><h3>内容队列</h3><p>从文章详情页完成审核、平台适配与发布。</p></div><span class="count-badge" th:text="${articles.size()}">0</span></div>
+                <div class="empty-state" th:if="${#lists.isEmpty(articles)}">暂无文章，请先从项目生成内容。</div><div class="table-wrap" th:unless="${#lists.isEmpty(articles)}"><table><thead><tr><th>内容</th><th>阶段</th><th>语言</th><th>版本</th><th>更新时间</th><th>操作</th></tr></thead>
+                    <tbody><tr th:each="article : ${articles}"><td><a class="table-title" th:href="@{/articles/{id}(id=${article.id})}" th:text="${article.title}">标题</a><small th:text="${article.summary}">摘要</small></td>
+                        <td><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></td><td th:text="${article.language}">zh-CN</td><td th:text="|v${article.currentVersion}|">v1</td><td th:text="${article.updatedAt}">time</td>
+                        <td><a class="text-link" th:href="@{/articles/{id}(id=${article.id})}" th:text="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'} ? '选择渠道' : '编辑审核'">处理</a></td></tr></tbody></table></div></section>
+
+            <div class="grid-2 section-gap"><section class="card"><div class="card-header"><div><p class="section-kicker">Connected APIs</p><h3>自动发布账号</h3></div><span class="count-badge" th:text="${accounts.size()}">0</span></div>
+                <div class="empty-state" th:if="${#lists.isEmpty(accounts)}">还没有 API 渠道账号。</div><div class="compact-list" th:unless="${#lists.isEmpty(accounts)}"><div class="compact-item" th:each="account : ${accounts}"><span><strong th:text="${account.displayName}">账号</strong><small th:text="${channelNames.get(account.type)}">平台</small></span>
+                    <span class="status-pill" th:classappend="| status-${account.status.name().toLowerCase()}|" th:text="${account.status}">ACTIVE</span></div></div></section>
+                <section class="card"><div class="card-header"><div><p class="section-kicker">Manual platforms</p><h3>跳转登录发布</h3><p>不保存平台密码、Cookie 或验证码。</p></div><span class="count-badge" th:text="${manualTargets.size()}">0</span></div>
+                    <div class="compact-list"><div class="compact-item" th:each="channel : ${manualTargets}"><span><strong th:text="${channel.displayName}">平台</strong><small th:text="${channel.contentHint}">格式</small></span><span class="format-badge" th:text="${channel.contentFormat}">MARKDOWN</span></div></div></section></div>
+        </main>
+    </div></div></body></html>

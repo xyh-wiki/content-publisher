@@ -30,10 +30,8 @@ public class DiscourseChannelPublisher extends AbstractHttpChannelPublisher {
     @Override
     public ChannelPublisher.PublishResult publish(ChannelAccount account, ChannelPublisher.PublishContent content,
                                                   Map<String, String> credentials) {
-        Article article = content.article();
-        String raw = content.canonicalUrl() == null ? article.markdown()
-                : article.markdown() + "\n\n原文链接：" + content.canonicalUrl();
-        Map<String, Object> body = Map.of("title", article.title(), "raw", raw);
+        Map<String, Object> body = Map.of("title", content.adaptedContent().title(),
+                "raw", content.adaptedContent().body());
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/posts.json"))
                 .timeout(properties.timeout()).header("Content-Type", "application/json")
                 .header("Api-Key", credentials.get("apiKey"))

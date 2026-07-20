@@ -28,7 +28,7 @@ public class MastodonChannelPublisher extends AbstractHttpChannelPublisher {
 
     @Override
     public PublishResult publish(ChannelAccount account, PublishContent content, Map<String, String> credentials) {
-        String status = ChannelContentFormatter.promotion(content.article(), content.canonicalUrl(), 500);
+        String status = content.adaptedContent().body();
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/api/v1/statuses"))
                 .timeout(properties.timeout()).header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + credentials.get("accessToken"))

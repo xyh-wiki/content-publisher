@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><title th:text="|${project.name} · Content Publisher|">项目详情</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}"><link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
+<body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('projects')}"></aside>
+    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('项目详情', '确认项目事实并生成内容主稿')}"></header>
+        <main class="page-content">
+            <div class="process-rail"><div class="process-item done"><span>✓</span><div><strong>导入项目</strong><small>仓库已读取</small></div></div>
+                <div class="process-item active"><span>2</span><div><strong>生成文章</strong><small>配置生成策略</small></div></div>
+                <div class="process-item"><span>3</span><div><strong>编辑审核</strong><small>锁定发布版本</small></div></div>
+                <div class="process-item"><span>4</span><div><strong>适配发布</strong><small>分发到各平台</small></div></div></div>
+            <section class="page-header"><div><p class="section-kicker">Repository source</p><h2 th:text="${project.name}">项目</h2><p th:text="${project.description ?: '仓库尚未提供项目描述。'}">描述</p></div>
+                <div class="header-actions"><a class="secondary-link" th:href="@{/projects}">返回项目库</a></div></section>
+            <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
+
+            <section class="card detail-grid"><div><span>分析状态</span><strong class="status-pill" th:classappend="| status-${project.status.name().toLowerCase()}|" th:text="${project.status}">READY</strong></div>
+                <div><span>默认分支</span><strong th:text="${project.defaultBranch ?: '-'}">main</strong></div><div><span>源版本</span><strong class="mono" th:text="${project.revision ?: '-'}">revision</strong></div>
+                <div><span>许可证</span><strong th:text="${project.license ?: '-'}">license</strong></div><div class="wide"><span>Git 地址</span><a class="text-link" th:href="${project.gitUrl}" th:text="${project.gitUrl}" target="_blank" rel="noopener noreferrer">url</a></div>
+                <div class="wide"><span>识别技术栈</span><div class="tag-row"><span class="tag" th:each="language : ${project.languages}" th:text="${language}">Java</span></div></div></section>
+
+            <div class="content-aside-grid section-gap">
+                <section class="card"><div class="card-header"><div><p class="section-kicker">AI generation</p><h3>生成文章草稿</h3><p>草稿作为完整内容主稿，发布时再按平台自动生成 Markdown、纯文本或短帖版本。</p></div>
+                    <span class="service-badge" th:classappend="${aiEnabled} ? ' online' : ' offline'" th:text="${aiEnabled} ? |${aiModel}| : 'AI 未配置'">AI</span></div>
+                <div class="alert warning" th:if="${!aiEnabled and canAdmin}">请先在 <a class="text-link" th:href="@{/settings/ai}">AI 服务</a>中设置 Base URL、API Key 和模型。</div>
+                <div class="alert warning" th:if="${!aiEnabled and !canAdmin}">AI 内容生成尚未启用，请联系租户管理员完成配置。</div>
+                    <div class="alert warning" th:if="${project.status.name() != 'READY'}">项目分析成功后才能生成文章。</div>
+                    <form class="stack-form" th:if="${canEdit}" th:action="@{/projects/{id}/articles(id=${project.id})}" th:object="${generateArticleForm}" method="post">
+                        <input type="hidden" th:field="*{idempotencyKey}"><div class="form-grid three"><div class="field"><label>内容语言</label><input th:field="*{language}" maxlength="20" required></div>
+                            <div class="field"><label>最小字数</label><input th:field="*{minCharacters}" type="number" min="200" max="20000" required></div><div class="field"><label>最大字数</label><input th:field="*{maxCharacters}" type="number" min="200" max="20000" required></div></div>
+                        <div class="field"><label>目标读者与文章语气</label><input th:field="*{tone}" maxlength="50" required><small>例如：面向 Java 后端工程师，专业、客观、突出架构取舍。</small></div>
+                        <div class="form-grid"><div class="field"><label>必须出现的关键词</label><textarea th:field="*{requiredKeywords}" rows="4" placeholder="每行一个或用逗号分隔"></textarea></div>
+                            <div class="field"><label>禁止出现的词语</label><textarea th:field="*{excludedKeywords}" rows="4" placeholder="竞品词、夸张表述或敏感词"></textarea></div></div>
+                        <div class="form-grid"><div class="field"><label>必须包含的章节</label><textarea th:field="*{requiredSections}" rows="5"></textarea></div>
+                            <div class="field"><label>关键词数量上限</label><input th:field="*{maxKeywords}" type="number" min="1" max="30" required><small>系统会校验长度、章节、必选词和禁用词，失败时不会创建低质量文章。</small></div></div>
+                        <div class="form-footer"><small>生成任务在后台运行，通常需要数十秒。</small><button class="primary-button" type="submit" th:disabled="${!aiEnabled or project.status.name() != 'READY' or !canEdit}">生成文章主稿</button></div>
+                    </form>
+                </section>
+                <aside class="sticky-column"><section class="card"><div class="card-header"><div><p class="section-kicker">Generated content</p><h3>项目文章</h3></div><span class="count-badge" th:text="${articles.size()}">0</span></div>
+                    <div class="empty-state" th:if="${#lists.isEmpty(articles)}">还没有文章主稿。</div><div class="compact-list" th:unless="${#lists.isEmpty(articles)}">
+                        <a class="compact-item" th:each="article : ${articles}" th:href="@{/articles/{id}(id=${article.id})}"><span><strong th:text="${article.title}">标题</strong><small th:text="|v${article.currentVersion} · ${article.language}|">版本</small></span>
+                            <span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></a></div></section>
+                    <section class="card"><p class="section-kicker">Quality controls</p><h3>输出受控</h3><ul class="checklist"><li>仅基于仓库事实生成</li><li>关键词和章节硬性校验</li><li>生成任务、源版本可追踪</li><li>发布前必须人工审核</li></ul></section></aside>
+            </div>
+        </main>
+    </div></div></body></html>

@@ -27,6 +27,10 @@ public class SecureChannelEndpointPolicy implements ChannelEndpointPolicy {
             case HASHNODE -> "https://gql.hashnode.com";
             case MEDIUM -> "https://api.medium.com";
             case WORDPRESS, DISCOURSE, MASTODON, GHOST -> null;
+            case XIAOHONGSHU, CSDN, JUEJIN, ZHIHU, CNBLOGS, SEGMENTFAULT, V2EX, OSCHINA,
+                    LINKEDIN, WECHAT_OFFICIAL, JIANSHU, TOUTIAO, BILIBILI_COLUMN, BLOG_51CTO,
+                    TENCENT_CLOUD, ALIBABA_CLOUD, HUAWEI_CLOUD ->
+                    throw new ApplicationException("CHANNEL_MANUAL_ONLY", "该渠道不提供平台托管的 API 发布");
         };
         if (fixed != null) {
             if (baseUrl != null && !baseUrl.isBlank() && !fixed.equals(stripTrailingSlash(baseUrl.trim()))) {

@@ -37,11 +37,9 @@ public class GitHubDiscussionsChannelPublisher extends AbstractHttpChannelPublis
     @Override
     public ChannelPublisher.PublishResult publish(ChannelAccount account, ChannelPublisher.PublishContent content,
                                                   Map<String, String> credentials) {
-        Article article = content.article();
-        String markdown = content.canonicalUrl() == null ? article.markdown()
-                : article.markdown() + "\n\n原文链接：" + content.canonicalUrl();
         Map<String, Object> input = Map.of("repositoryId", credentials.get("repositoryId"),
-                "categoryId", credentials.get("categoryId"), "title", article.title(), "body", markdown);
+                "categoryId", credentials.get("categoryId"), "title", content.adaptedContent().title(),
+                "body", content.adaptedContent().body());
         Map<String, Object> body = Map.of("query", MUTATION, "variables", Map.of("input", input));
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/graphql"))
                 .timeout(properties.timeout()).header("Content-Type", "application/json")

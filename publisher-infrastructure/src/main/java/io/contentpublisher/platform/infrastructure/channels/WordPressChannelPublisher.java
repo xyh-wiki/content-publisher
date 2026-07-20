@@ -37,12 +37,11 @@ public class WordPressChannelPublisher extends AbstractHttpChannelPublisher {
     @Override
     public ChannelPublisher.PublishResult publish(ChannelAccount account, ChannelPublisher.PublishContent content,
                                                   Map<String, String> credentials) {
-        Article article = content.article();
         String basic = Base64.getEncoder().encodeToString((credentials.get("username") + ":"
                 + credentials.get("applicationPassword")).getBytes(StandardCharsets.UTF_8));
-        String markdown = ChannelContentFormatter.articleWithLink(article, content.canonicalUrl());
-        String html = htmlRenderer.render(markdownParser.parse(markdown));
-        Map<String, Object> body = Map.of("title", article.title(), "content", html, "status", "publish");
+        String html = htmlRenderer.render(markdownParser.parse(content.adaptedContent().body()));
+        Map<String, Object> body = Map.of("title", content.adaptedContent().title(), "content", html,
+                "status", "publish");
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/wp-json/wp/v2/posts"))
                 .timeout(properties.timeout()).header("Content-Type", "application/json")
                 .header("Authorization", "Basic " + basic)

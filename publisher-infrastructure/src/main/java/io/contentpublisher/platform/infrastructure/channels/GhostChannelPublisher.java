@@ -44,8 +44,8 @@ public class GhostChannelPublisher extends AbstractHttpChannelPublisher {
     @Override
     public PublishResult publish(ChannelAccount account, PublishContent content, Map<String, String> credentials) {
         Map<String, Object> post = new LinkedHashMap<>();
-        post.put("title", content.article().title());
-        post.put("html", htmlRenderer.render(markdownParser.parse(content.article().markdown())));
+        post.put("title", content.adaptedContent().title());
+        post.put("html", htmlRenderer.render(markdownParser.parse(content.adaptedContent().body())));
         post.put("status", "published");
         if (content.canonicalUrl() != null) post.put("canonical_url", content.canonicalUrl());
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl()

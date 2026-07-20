@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow">
+    <meta th:if="${active}" http-equiv="refresh" th:content="|3;url=/jobs/${job.id}|"><title>任务详情 · Content Publisher</title><link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
+<body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('projects')}"></aside><div class="app-main">
+    <header th:replace="~{fragments/app-shell :: topbar('后台任务', '查看导入、生成或发布任务的实时状态')}"></header><main class="page-content narrow">
+        <section class="page-header"><div><p class="section-kicker">Background job</p><h2>任务执行详情</h2><p class="mono" th:text="${job.id}">job id</p></div><div class="header-actions"><a class="secondary-link" th:href="@{/projects}">返回项目与内容</a></div></section>
+        <section class="card job-hero"><div><span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${job.status}">PENDING</span><h2 th:text="${job.type}">IMPORT_PROJECT</h2>
+            <p th:if="${active}">任务正在后台执行，页面每 3 秒自动刷新。</p><p th:unless="${active}">任务已经结束，结果和异常信息已持久化。</p></div><div class="progress-number"><strong th:text="|${job.attempt}/${job.maxAttempts}|">0/4</strong><span>执行次数</span></div></section>
+        <section class="card detail-grid"><div><span>创建时间</span><strong th:text="${job.createdAt}">time</strong></div><div><span>更新时间</span><strong th:text="${job.updatedAt}">time</strong></div>
+            <div><span>幂等键</span><strong class="mono" th:text="${job.idempotencyKey}">key</strong></div><div><span>结果资源</span><strong class="mono" th:text="${job.resultResourceId ?: '-'}">id</strong></div></section>
+        <div class="alert error section-gap" th:if="${job.errorMessage}"><strong th:text="${job.errorCode}">ERROR</strong><br><span th:text="${job.errorMessage}">message</span></div>
+        <section class="card section-gap" th:if="${resultLink}"><div class="card-header"><div><p class="section-kicker">Next step</p><h3>任务执行成功</h3><p>结果资源已经创建，继续进入下一阶段。</p></div><a class="primary-link" th:href="${resultLink}">查看结果 →</a></div></section>
+    </main></div></div></body></html>

@@ -32,8 +32,8 @@ public class RedditChannelPublisher extends AbstractHttpChannelPublisher {
     public PublishResult publish(ChannelAccount account, PublishContent content, Map<String, String> credentials) {
         String form = form(Map.of("api_type", "json", "kind", "self",
                 "sr", credentials.get("subreddit"),
-                "title", ChannelContentFormatter.truncate(content.article().title(), 300),
-                "text", ChannelContentFormatter.articleWithLink(content.article(), content.canonicalUrl()),
+                "title", content.adaptedContent().title(),
+                "text", content.adaptedContent().body(),
                 "resubmit", "true"));
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/api/submit"))
                 .timeout(properties.timeout()).header("Content-Type", "application/x-www-form-urlencoded")

@@ -3,6 +3,7 @@ package io.contentpublisher.platform.application.port;
 import io.contentpublisher.platform.domain.Job;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,6 +12,7 @@ public interface JobRepository {
     Optional<Job> createIfWithinQuota(Job job, int maxActiveJobs);
     Optional<Job> findJobById(String tenantId, UUID jobId);
     Optional<Job> findByIdempotencyKey(String tenantId, String idempotencyKey);
+    List<Job> findRecentJobs(String tenantId, int limit);
     long countActiveJobs(String tenantId);
     Optional<Job> claimNext(String workerId, Instant now, Instant staleBefore);
     boolean markSucceeded(UUID jobId, String workerId, UUID resultResourceId, Instant now);

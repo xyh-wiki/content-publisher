@@ -38,8 +38,8 @@ public class HashnodeChannelPublisher extends AbstractHttpChannelPublisher {
     public PublishResult publish(ChannelAccount account, PublishContent content, Map<String, String> credentials) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("publicationId", credentials.get("publicationId"));
-        input.put("title", content.article().title());
-        input.put("contentMarkdown", content.article().markdown());
+        input.put("title", content.adaptedContent().title());
+        input.put("contentMarkdown", content.adaptedContent().body());
         if (content.canonicalUrl() != null) input.put("originalArticleURL", content.canonicalUrl());
         Map<String, Object> requestBody = Map.of("query", MUTATION, "variables", Map.of("input", input));
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl()))

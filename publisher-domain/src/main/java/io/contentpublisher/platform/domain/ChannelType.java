@@ -10,5 +10,22 @@ public enum ChannelType {
     HASHNODE,
     MEDIUM,
     MASTODON,
-    GHOST
+    GHOST,
+    XIAOHONGSHU,
+    CSDN,
+    JUEJIN,
+    ZHIHU,
+    CNBLOGS,
+    SEGMENTFAULT,
+    V2EX,
+    OSCHINA,
+    LINKEDIN,
+    WECHAT_OFFICIAL,
+    JIANSHU,
+    TOUTIAO,
+    BILIBILI_COLUMN,
+    BLOG_51CTO,
+    TENCENT_CLOUD,
+    ALIBABA_CLOUD,
+    HUAWEI_CLOUD
 }

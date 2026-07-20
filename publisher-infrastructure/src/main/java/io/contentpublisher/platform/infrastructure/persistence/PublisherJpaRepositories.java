@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Modifying;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -16,11 +17,15 @@ import java.util.UUID;
 interface ProjectJpaRepository extends JpaRepository<ProjectEntity, UUID> {
     Optional<ProjectEntity> findByTenantIdAndGitUrl(String tenantId, String gitUrl);
     Optional<ProjectEntity> findByTenantIdAndId(String tenantId, UUID id);
+    List<ProjectEntity> findByTenantIdOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
 }
 
 interface ArticleJpaRepository extends JpaRepository<ArticleEntity, UUID> {
     Optional<ArticleEntity> findByTenantIdAndId(String tenantId, UUID id);
     Optional<ArticleEntity> findByTenantIdAndGenerationJobId(String tenantId, UUID generationJobId);
+    List<ArticleEntity> findByTenantIdOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
+    List<ArticleEntity> findByTenantIdAndProjectIdOrderByUpdatedAtDesc(String tenantId, UUID projectId,
+                                                                       Pageable pageable);
 }
 
 interface ArticleVersionJpaRepository extends JpaRepository<ArticleVersionEntity, ArticleVersionKey> {
@@ -33,6 +38,21 @@ interface SnapshotJpaRepository extends JpaRepository<SnapshotEntity, UUID> {
 }
 
 interface AuditLogJpaRepository extends JpaRepository<AuditLogEntity, UUID> {}
+
+interface AiProviderSettingsJpaRepository extends JpaRepository<AiProviderSettingsEntity, String> {
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update AiProviderSettingsEntity s set s.baseUrl = :baseUrl,
+                s.encryptedApiKey = :encryptedApiKey, s.apiKeyFingerprint = :apiKeyFingerprint,
+                s.model = :model, s.timeoutSeconds = :timeoutSeconds, s.temperature = :temperature,
+                s.enabled = :enabled, s.settingsVersion = :nextVersion,
+                s.updatedBy = :updatedBy, s.updatedAt = :updatedAt
+            where s.tenantId = :tenantId and s.settingsVersion = :expectedVersion
+            """)
+    int updateIfVersionMatches(String tenantId, String baseUrl, String encryptedApiKey, String apiKeyFingerprint,
+                               String model, int timeoutSeconds, BigDecimal temperature, boolean enabled,
+                               int expectedVersion, int nextVersion, String updatedBy, Instant updatedAt);
+}
 
 interface ChannelAccountJpaRepository extends JpaRepository<ChannelAccountEntity, UUID> {
     Optional<ChannelAccountEntity> findByTenantIdAndId(String tenantId, UUID id);
@@ -55,11 +75,22 @@ interface ChannelAccountJpaRepository extends JpaRepository<ChannelAccountEntity
 interface PublicationJpaRepository extends JpaRepository<PublicationEntity, UUID> {
     Optional<PublicationEntity> findByTenantIdAndId(String tenantId, UUID id);
     Optional<PublicationEntity> findByTenantIdAndPublicationJobId(String tenantId, UUID publicationJobId);
+    List<PublicationEntity> findByTenantIdAndArticleIdOrderByUpdatedAtDesc(String tenantId, UUID articleId);
+    List<PublicationEntity> findByTenantIdAndArticleIdInOrderByUpdatedAtDesc(String tenantId, List<UUID> articleIds);
+    List<PublicationEntity> findByTenantIdOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
+}
+
+interface ManualPublicationJpaRepository extends JpaRepository<ManualPublicationEntity, UUID> {
+    List<ManualPublicationEntity> findByTenantIdAndArticleIdOrderByPublishedAtDesc(String tenantId, UUID articleId);
+    List<ManualPublicationEntity> findByTenantIdAndArticleIdInOrderByPublishedAtDesc(String tenantId,
+                                                                                     List<UUID> articleIds);
+    List<ManualPublicationEntity> findByTenantIdOrderByPublishedAtDesc(String tenantId, Pageable pageable);
 }
 
 interface JobJpaRepository extends JpaRepository<JobEntity, UUID> {
     Optional<JobEntity> findByTenantIdAndId(String tenantId, UUID id);
     Optional<JobEntity> findByTenantIdAndIdempotencyKey(String tenantId, String idempotencyKey);
+    List<JobEntity> findByTenantIdOrderByUpdatedAtDesc(String tenantId, Pageable pageable);
     long countByTenantIdAndStatusIn(String tenantId, List<JobStatus> statuses);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)

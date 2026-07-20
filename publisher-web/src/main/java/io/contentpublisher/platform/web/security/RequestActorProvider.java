@@ -10,16 +10,25 @@ import org.springframework.stereotype.Component;
 @Component
 public class RequestActorProvider {
     private final SecurityProperties properties;
+    private final LocalSecurityProperties localProperties;
 
-    public RequestActorProvider(SecurityProperties properties) {
+    public RequestActorProvider(SecurityProperties properties, LocalSecurityProperties localProperties) {
         this.properties = properties;
+        this.localProperties = localProperties;
     }
 
     public ActorContext currentActor() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (localProperties.enabled()) {
+            if (authentication == null || !authentication.isAuthenticated()
+                    || !(authentication.getPrincipal() instanceof LocalUserPrincipal principal)) {
+                throw new AuthenticationCredentialsNotFoundException("请先登录");
+            }
+            return new ActorContext(principal.tenantId(), principal.username());
+        }
         if (!properties.enabled()) {
             return new ActorContext(properties.defaultTenant(), properties.defaultSubject());
         }
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication) || !authentication.isAuthenticated()) {
             throw new AuthenticationCredentialsNotFoundException("缺少有效的访问令牌");
         }

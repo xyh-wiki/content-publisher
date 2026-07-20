@@ -11,7 +11,7 @@ public record JobResponse(UUID id, String type, String status, int attempt, int 
     public static JobResponse from(Job job) {
         String resourceType = switch (job.type()) {
             case IMPORT_PROJECT -> "PROJECT";
-            case GENERATE_ARTICLE -> "ARTICLE";
+            case GENERATE_ARTICLE, GENERATE_TOPIC_ARTICLE, GENERATE_WEBSITE_ARTICLE -> "ARTICLE";
             case PUBLISH_ARTICLE -> "PUBLICATION";
         };
         return new JobResponse(job.id(), job.type().name(), job.status().name(), job.attempt(), job.maxAttempts(),

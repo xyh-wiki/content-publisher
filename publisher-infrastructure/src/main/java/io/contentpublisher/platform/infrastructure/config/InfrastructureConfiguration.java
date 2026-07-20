@@ -1,20 +1,27 @@
 package io.contentpublisher.platform.infrastructure.config;
 
+import io.contentpublisher.platform.application.AiSettingsApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.application.PlatformContentAdapter;
 import io.contentpublisher.platform.application.port.ArticleRepository;
+import io.contentpublisher.platform.application.port.AiEndpointPolicy;
+import io.contentpublisher.platform.application.port.AiProviderSettingsRepository;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.ContentGenerator;
 import io.contentpublisher.platform.application.port.ProjectRepository;
 import io.contentpublisher.platform.application.port.RepositoryInspector;
 import io.contentpublisher.platform.application.port.RepositorySnapshotStore;
+import io.contentpublisher.platform.application.port.SecretCipher;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
 import io.contentpublisher.platform.application.port.PublicationRepository;
+import io.contentpublisher.platform.application.port.ManualPublicationRepository;
 import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
 import io.contentpublisher.platform.application.port.ChannelPublisher;
+import io.contentpublisher.platform.application.port.WebsiteInspector;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,7 +33,8 @@ import java.util.List;
 
 @Configuration
 @EnableScheduling
-@EnableConfigurationProperties({GitImportProperties.class, AiProperties.class, JobProperties.class, ChannelProperties.class})
+@EnableConfigurationProperties({GitImportProperties.class, AiProperties.class, AiEndpointSecurityProperties.class,
+        SecretProperties.class, JobProperties.class, ChannelProperties.class, WebsiteImportProperties.class})
 public class InfrastructureConfiguration {
     @Bean
     Clock clock() {
@@ -35,7 +43,8 @@ public class InfrastructureConfiguration {
 
     @Bean
     HttpClient aiHttpClient(AiProperties properties) {
-        return HttpClient.newBuilder().connectTimeout(properties.timeout()).build();
+        return HttpClient.newBuilder().connectTimeout(properties.timeout())
+                .followRedirects(HttpClient.Redirect.NEVER).build();
     }
 
     @Bean
@@ -44,27 +53,42 @@ public class InfrastructureConfiguration {
     }
 
     @Bean
+    HttpClient websiteHttpClient(WebsiteImportProperties properties) {
+        return HttpClient.newBuilder().connectTimeout(properties.timeout())
+                .followRedirects(HttpClient.Redirect.NEVER).build();
+    }
+
+    @Bean
     ProjectApplicationService projectApplicationService(ProjectRepository projects,
                                                          ArticleRepository articles,
                                                          RepositorySnapshotStore snapshots,
                                                          RepositoryInspector inspector,
+                                                         WebsiteInspector websiteInspector,
                                                          ContentGenerator generator,
                                                          AuditRecorder auditRecorder,
                                                          Clock clock) {
-        return new ProjectApplicationService(projects, articles, snapshots, inspector, generator, auditRecorder, clock);
+        return new ProjectApplicationService(projects, articles, snapshots, inspector, websiteInspector, generator,
+                auditRecorder, clock);
+    }
+
+    @Bean
+    PlatformContentAdapter platformContentAdapter() {
+        return new PlatformContentAdapter();
     }
 
     @Bean
     PublishingApplicationService publishingApplicationService(ArticleRepository articles,
                                                                ChannelAccountRepository accounts,
                                                                PublicationRepository publications,
+                                                               ManualPublicationRepository manualPublications,
                                                                CredentialVault credentialVault,
                                                                ChannelEndpointPolicy endpointPolicy,
                                                                List<ChannelPublisher> publishers,
                                                                AuditRecorder auditRecorder,
+                                                               PlatformContentAdapter contentAdapter,
                                                                Clock clock) {
-        return new PublishingApplicationService(articles, accounts, publications, credentialVault,
-                endpointPolicy, publishers, auditRecorder, clock);
+        return new PublishingApplicationService(articles, accounts, publications, manualPublications,
+                credentialVault, endpointPolicy, publishers, auditRecorder, contentAdapter, clock);
     }
 
     @Bean
@@ -73,5 +97,14 @@ public class InfrastructureConfiguration {
                                                 AuditRecorder auditRecorder, Clock clock, JobProperties properties) {
         return new JobApplicationService(jobs, projects, publishing, auditRecorder, clock,
                 properties.maxActiveJobsPerTenant(), properties.maxAttempts());
+    }
+
+    @Bean
+    AiSettingsApplicationService aiSettingsApplicationService(AiProviderSettingsRepository settings,
+                                                               AiEndpointPolicy endpointPolicy,
+                                                               SecretCipher secretCipher,
+                                                               AuditRecorder auditRecorder,
+                                                               Clock clock) {
+        return new AiSettingsApplicationService(settings, endpointPolicy, secretCipher, auditRecorder, clock);
     }
 }

@@ -32,12 +32,10 @@ public class DevChannelPublisher extends AbstractHttpChannelPublisher {
     @Override
     public ChannelPublisher.PublishResult publish(ChannelAccount account, ChannelPublisher.PublishContent content,
                                                   Map<String, String> credentials) {
-        Article article = content.article();
-        List<String> tags = article.keywords().stream().map(this::tag).filter(value -> !value.isBlank()).distinct()
-                .limit(4).toList();
         Map<String, Object> articleBody = new java.util.LinkedHashMap<>();
-        articleBody.put("title", article.title()); articleBody.put("published", true);
-        articleBody.put("body_markdown", article.markdown()); articleBody.put("tags", tags);
+        articleBody.put("title", content.adaptedContent().title()); articleBody.put("published", true);
+        articleBody.put("body_markdown", content.adaptedContent().body());
+        articleBody.put("tags", content.adaptedContent().tags());
         if (content.canonicalUrl() != null) articleBody.put("canonical_url", content.canonicalUrl());
         Map<String, Object> body = Map.of("article", articleBody);
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/api/articles"))

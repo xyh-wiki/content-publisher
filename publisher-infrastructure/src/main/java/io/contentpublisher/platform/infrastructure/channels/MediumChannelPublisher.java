@@ -30,9 +30,9 @@ public class MediumChannelPublisher extends AbstractHttpChannelPublisher {
     @Override
     public PublishResult publish(ChannelAccount account, PublishContent content, Map<String, String> credentials) {
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("title", content.article().title()); body.put("contentFormat", "markdown");
-        body.put("content", content.article().markdown()); body.put("publishStatus", "public");
-        body.put("tags", content.article().keywords().stream().limit(5).toList());
+        body.put("title", content.adaptedContent().title()); body.put("contentFormat", "markdown");
+        body.put("content", content.adaptedContent().body()); body.put("publishStatus", "public");
+        body.put("tags", content.adaptedContent().tags().stream().limit(5).toList());
         if (content.canonicalUrl() != null) body.put("canonicalUrl", content.canonicalUrl());
         HttpRequest request = HttpRequest.newBuilder(URI.create(account.baseUrl() + "/v1/users/"
                         + credentials.get("authorId") + "/posts"))

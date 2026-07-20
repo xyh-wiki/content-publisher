@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<body>
+<aside class="app-sidebar" th:fragment="sidebar(active)">
+    <div class="sidebar-brand">
+        <a th:href="@{/}" class="brand-lockup">
+            <img th:src="@{/assets/logo.svg}" alt="Content Publisher">
+            <span><strong>Publisher</strong><small>内容分发中心</small></span>
+        </a>
+        <button class="sidebar-close" type="button" data-sidebar-close aria-label="关闭导航">×</button>
+    </div>
+
+    <nav class="sidebar-nav" aria-label="主导航">
+        <p>工作空间</p>
+        <a th:href="@{/}" th:classappend="${active == 'dashboard'} ? ' active'">
+            <span class="nav-icon">⌂</span><span>总览</span>
+        </a>
+        <a th:href="@{/projects}" th:classappend="${active == 'projects'} ? ' active'">
+            <span class="nav-icon">◇</span><span>项目与内容</span>
+        </a>
+        <a th:href="@{/publishing}" th:classappend="${active == 'publishing'} ? ' active'">
+            <span class="nav-icon">↗</span><span>发布中心</span>
+        </a>
+        <a th:href="@{/channels}" th:classappend="${active == 'channels'} ? ' active'">
+            <span class="nav-icon">◎</span><span>渠道管理</span>
+        </a>
+        <p>系统设置</p>
+        <a th:if="${canAdmin}" th:href="@{/settings/ai}" th:classappend="${active == 'ai'} ? ' active'">
+            <span class="nav-icon">✦</span><span>AI 服务</span>
+        </a>
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="account-card">
+            <span class="account-avatar" th:text="${#strings.isEmpty(currentUsername) ? 'U' : #strings.substring(currentUsername,0,1).toUpperCase()}">A</span>
+            <span class="account-copy"><strong th:text="${currentUsername}">admin</strong><small th:text="${currentTenant}">local</small></span>
+        </div>
+        <form th:action="@{/logout}" method="post"><button class="logout-button" type="submit">退出</button></form>
+    </div>
+</aside>
+
+<header class="app-topbar" th:fragment="topbar(title, subtitle)">
+    <button class="menu-button" type="button" data-sidebar-open aria-label="打开导航">☰</button>
+    <div><h1 th:text="${title}">页面标题</h1><p th:text="${subtitle}">页面说明</p></div>
+    <div class="topbar-actions"><span class="environment-dot"></span><span>生产环境</span></div>
+</header>
+</body>
+</html>

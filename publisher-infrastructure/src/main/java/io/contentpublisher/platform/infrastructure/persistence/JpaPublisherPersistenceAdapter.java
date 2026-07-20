@@ -2,17 +2,23 @@ package io.contentpublisher.platform.infrastructure.persistence;
 
 import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.application.port.ArticleRepository;
+import io.contentpublisher.platform.application.port.AiProviderSettingsRepository;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.JobRepository;
+import io.contentpublisher.platform.application.port.ManualPublicationRepository;
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
 import io.contentpublisher.platform.application.port.PublicationRepository;
 import io.contentpublisher.platform.application.port.ProjectRepository;
 import io.contentpublisher.platform.application.port.RepositorySnapshotStore;
 import io.contentpublisher.platform.domain.Article;
+import io.contentpublisher.platform.domain.AiProviderSettings;
 import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.domain.ArticleVersion;
+import io.contentpublisher.platform.domain.ArticleSourceType;
+import io.contentpublisher.platform.domain.ContentOrigin;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.Job;
+import io.contentpublisher.platform.domain.ManualPublication;
 import io.contentpublisher.platform.domain.JobPayload;
 import io.contentpublisher.platform.domain.JobStatus;
 import io.contentpublisher.platform.domain.JobType;
@@ -34,11 +40,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.time.Clock;
+import java.math.BigDecimal;
 
 @Repository
 @Transactional
 public class JpaPublisherPersistenceAdapter implements ProjectRepository, ArticleRepository, RepositorySnapshotStore,
-        AuditRecorder, JobRepository, ChannelAccountRepository, PublicationRepository {
+        AuditRecorder, JobRepository, ChannelAccountRepository, PublicationRepository, ManualPublicationRepository,
+        AiProviderSettingsRepository {
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() {};
 
     private final ProjectJpaRepository projects;
@@ -46,25 +54,32 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     private final ArticleVersionJpaRepository articleVersions;
     private final SnapshotJpaRepository snapshots;
     private final AuditLogJpaRepository auditLogs;
+    private final AiProviderSettingsJpaRepository aiProviderSettings;
     private final JobJpaRepository jobs;
     private final ChannelAccountJpaRepository channelAccounts;
     private final PublicationJpaRepository publications;
+    private final ManualPublicationJpaRepository manualPublications;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public JpaPublisherPersistenceAdapter(ProjectJpaRepository projects, ArticleJpaRepository articles,
                                           ArticleVersionJpaRepository articleVersions,
                                           SnapshotJpaRepository snapshots, AuditLogJpaRepository auditLogs,
+                                          AiProviderSettingsJpaRepository aiProviderSettings,
                                           JobJpaRepository jobs, ChannelAccountJpaRepository channelAccounts,
-                                          PublicationJpaRepository publications, ObjectMapper objectMapper, Clock clock) {
+                                          PublicationJpaRepository publications,
+                                          ManualPublicationJpaRepository manualPublications,
+                                          ObjectMapper objectMapper, Clock clock) {
         this.projects = projects;
         this.articles = articles;
         this.articleVersions = articleVersions;
         this.snapshots = snapshots;
         this.auditLogs = auditLogs;
+        this.aiProviderSettings = aiProviderSettings;
         this.jobs = jobs;
         this.channelAccounts = channelAccounts;
         this.publications = publications;
+        this.manualPublications = manualPublications;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -94,9 +109,21 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<Project> findRecentProjects(String tenantId, int limit) {
+        return projects.findByTenantIdOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
+                .map(this::toDomain).toList();
+    }
+
+    @Override
     public Article save(Article article) {
         ArticleEntity entity = new ArticleEntity();
         entity.id = article.id(); entity.tenantId = article.tenantId(); entity.projectId = article.projectId();
+        entity.sourceType = article.sourceType().name(); entity.sourceTitle = article.origin().title();
+        entity.sourceUrl = article.origin().sourceUrl();
+        entity.sourceDescription = article.origin().description(); entity.targetAudience = article.origin().audience();
+        entity.articleType = article.origin().articleType(); entity.knowledgeLevel = article.origin().knowledgeLevel();
+        entity.sourceKeywordsJson = write(article.origin().requestedKeywords());
         entity.generationJobId = article.generationJobId(); entity.title = article.title();
         entity.summary = article.summary(); entity.markdown = article.markdown();
         entity.keywordsJson = write(article.keywords()); entity.language = article.language();
@@ -133,11 +160,54 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
 
     @Override
     @Transactional(readOnly = true)
+    public List<Article> findRecentArticles(String tenantId, int limit) {
+        return articles.findByTenantIdOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
+                .map(this::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Article> findRecentByProjectId(String tenantId, UUID projectId, int limit) {
+        return articles.findByTenantIdAndProjectIdOrderByUpdatedAtDesc(
+                tenantId, projectId, PageRequest.of(0, limit)).stream().map(this::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<ArticleVersion> findVersions(String tenantId, UUID articleId) {
         return articleVersions.findVersions(tenantId, articleId).stream().map(entity ->
                 new ArticleVersion(entity.tenantId, entity.id.articleId, entity.id.versionNumber,
                         entity.title, entity.summary, entity.markdown, read(entity.keywordsJson),
                         entity.createdBy, entity.createdAt)).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AiProviderSettings> findByTenantId(String tenantId) {
+        return aiProviderSettings.findById(tenantId).map(this::toDomain);
+    }
+
+    @Override
+    public AiProviderSettings save(AiProviderSettings settings) {
+        AiProviderSettingsEntity entity = new AiProviderSettingsEntity();
+        entity.tenantId = settings.tenantId(); entity.baseUrl = settings.baseUrl();
+        entity.encryptedApiKey = settings.encryptedApiKey();
+        entity.apiKeyFingerprint = settings.apiKeyFingerprint(); entity.model = settings.model();
+        entity.timeoutSeconds = settings.timeoutSeconds(); entity.temperature = BigDecimal.valueOf(settings.temperature());
+        entity.enabled = settings.enabled(); entity.settingsVersion = settings.version();
+        entity.createdBy = settings.createdBy(); entity.updatedBy = settings.updatedBy();
+        entity.createdAt = settings.createdAt(); entity.updatedAt = settings.updatedAt();
+        return toDomain(aiProviderSettings.save(entity));
+    }
+
+    @Override
+    public Optional<AiProviderSettings> updateIfVersionMatches(AiProviderSettings settings, int expectedVersion) {
+        int updated = aiProviderSettings.updateIfVersionMatches(settings.tenantId(), settings.baseUrl(),
+                settings.encryptedApiKey(), settings.apiKeyFingerprint(), settings.model(), settings.timeoutSeconds(),
+                BigDecimal.valueOf(settings.temperature()), settings.enabled(), expectedVersion, settings.version(), settings.updatedBy(),
+                settings.updatedAt());
+        if (updated == 0) return Optional.empty();
+        return aiProviderSettings.findById(settings.tenantId()).map(this::toDomain);
     }
 
     @Override
@@ -206,6 +276,59 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<Publication> findApiByArticle(String tenantId, UUID articleId) {
+        return publications.findByTenantIdAndArticleIdOrderByUpdatedAtDesc(tenantId, articleId).stream()
+                .map(this::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Publication> findApiByArticles(String tenantId, List<UUID> articleIds) {
+        return publications.findByTenantIdAndArticleIdInOrderByUpdatedAtDesc(tenantId, articleIds).stream()
+                .map(this::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Publication> findRecentApi(String tenantId, int limit) {
+        return publications.findByTenantIdOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
+                .map(this::toDomain).toList();
+    }
+
+    @Override
+    public ManualPublication save(ManualPublication publication) {
+        ManualPublicationEntity entity = new ManualPublicationEntity();
+        entity.id = publication.id(); entity.tenantId = publication.tenantId();
+        entity.articleId = publication.articleId(); entity.channelType = publication.channelType();
+        entity.contentFormat = publication.contentFormat(); entity.adaptedTitle = publication.adaptedTitle();
+        entity.adaptedContent = publication.adaptedContent(); entity.externalUrl = publication.externalUrl();
+        entity.publishedBy = publication.publishedBy(); entity.publishedAt = publication.publishedAt();
+        return toDomain(manualPublications.save(entity));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ManualPublication> findByArticle(String tenantId, UUID articleId) {
+        return manualPublications.findByTenantIdAndArticleIdOrderByPublishedAtDesc(tenantId, articleId).stream()
+                .map(this::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ManualPublication> findByArticles(String tenantId, List<UUID> articleIds) {
+        return manualPublications.findByTenantIdAndArticleIdInOrderByPublishedAtDesc(tenantId, articleIds).stream()
+                .map(this::toDomain).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ManualPublication> findRecent(String tenantId, int limit) {
+        return manualPublications.findByTenantIdOrderByPublishedAtDesc(tenantId,
+                org.springframework.data.domain.PageRequest.of(0, limit)).stream().map(this::toDomain).toList();
+    }
+
+    @Override
     public void save(String tenantId, UUID projectId, RepositorySnapshot snapshot) {
         SnapshotEntity entity = new SnapshotEntity();
         entity.projectId = projectId; entity.tenantId = tenantId; entity.name = snapshot.name(); entity.description = snapshot.description();
@@ -232,12 +355,22 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     }
 
     private Article toDomain(ArticleEntity entity) {
-        return new Article(entity.id, entity.tenantId, entity.projectId, entity.generationJobId,
+        ArticleSourceType sourceType = ArticleSourceType.valueOf(entity.sourceType);
+        ContentOrigin origin = sourceType == ArticleSourceType.GIT ? ContentOrigin.git(entity.projectId)
+                : new ContentOrigin(sourceType, null, entity.sourceUrl, entity.sourceTitle, entity.sourceDescription,
+                        entity.targetAudience, entity.articleType, entity.knowledgeLevel, read(entity.sourceKeywordsJson));
+        return new Article(entity.id, entity.tenantId, origin, entity.generationJobId,
                 entity.title, entity.summary, entity.markdown,
                 read(entity.keywordsJson), entity.language, entity.sourceRevision, entity.currentVersion,
                 ArticleStatus.valueOf(entity.status),
                 entity.createdBy, entity.updatedBy,
                 entity.createdAt, entity.updatedAt);
+    }
+
+    private AiProviderSettings toDomain(AiProviderSettingsEntity entity) {
+        return new AiProviderSettings(entity.tenantId, entity.baseUrl, entity.encryptedApiKey,
+                entity.apiKeyFingerprint, entity.model, entity.timeoutSeconds, entity.temperature.doubleValue(), entity.enabled,
+                entity.settingsVersion, entity.createdBy, entity.updatedBy, entity.createdAt, entity.updatedAt);
     }
 
     private ChannelAccount toDomain(ChannelAccountEntity entity) {
@@ -251,6 +384,12 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
         return new Publication(entity.id, entity.tenantId, entity.articleId, entity.channelAccountId,
                 entity.publicationJobId, entity.channelType, entity.canonicalUrl, entity.status, entity.externalId, entity.externalUrl,
                 entity.errorCode, entity.errorMessage, entity.publishedAt, entity.createdAt, entity.updatedAt);
+    }
+
+    private ManualPublication toDomain(ManualPublicationEntity entity) {
+        return new ManualPublication(entity.id, entity.tenantId, entity.articleId, entity.channelType,
+                entity.contentFormat, entity.adaptedTitle, entity.adaptedContent, entity.externalUrl,
+                entity.publishedBy, entity.publishedAt);
     }
 
     @Override
@@ -293,6 +432,13 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
     @Transactional(readOnly = true)
     public Optional<Job> findByIdempotencyKey(String tenantId, String idempotencyKey) {
         return jobs.findByTenantIdAndIdempotencyKey(tenantId, idempotencyKey).map(this::toDomain);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Job> findRecentJobs(String tenantId, int limit) {
+        return jobs.findByTenantIdOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit)).stream()
+                .map(this::toDomain).toList();
     }
 
     @Override
@@ -368,6 +514,8 @@ public class JpaPublisherPersistenceAdapter implements ProjectRepository, Articl
             return switch (type) {
                 case IMPORT_PROJECT -> objectMapper.readValue(payload, JobPayload.ImportProject.class);
                 case GENERATE_ARTICLE -> objectMapper.readValue(payload, JobPayload.GenerateArticle.class);
+                case GENERATE_TOPIC_ARTICLE -> objectMapper.readValue(payload, JobPayload.GenerateTopicArticle.class);
+                case GENERATE_WEBSITE_ARTICLE -> objectMapper.readValue(payload, JobPayload.GenerateWebsiteArticle.class);
                 case PUBLISH_ARTICLE -> objectMapper.readValue(payload, JobPayload.PublishArticle.class);
             };
         } catch (JsonProcessingException exception) {

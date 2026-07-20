@@ -28,7 +28,8 @@ import java.util.UUID;
 public class DurableJobWorker {
     private static final Logger log = LoggerFactory.getLogger(DurableJobWorker.class);
     private static final Set<String> RETRYABLE_CODES = Set.of(
-            "AI_REQUEST_FAILED", "AI_REQUEST_INTERRUPTED", "GIT_IMPORT_FAILED");
+            "AI_REQUEST_FAILED", "AI_REQUEST_INTERRUPTED", "GIT_IMPORT_FAILED",
+            "WEBSITE_FETCH_FAILED", "WEBSITE_FETCH_INTERRUPTED");
 
     private final JobRepository jobs;
     private final ProjectApplicationService projects;
@@ -67,6 +68,14 @@ public class DurableJobWorker {
                 case GENERATE_ARTICLE -> {
                     JobPayload.GenerateArticle payload = (JobPayload.GenerateArticle) job.payload();
                     yield projects.generateArticle(actor, payload.projectId(), payload.policy(), job.id()).id();
+                }
+                case GENERATE_TOPIC_ARTICLE -> {
+                    JobPayload.GenerateTopicArticle payload = (JobPayload.GenerateTopicArticle) job.payload();
+                    yield projects.generateTopicArticle(actor, payload.brief(), payload.policy(), job.id()).id();
+                }
+                case GENERATE_WEBSITE_ARTICLE -> {
+                    JobPayload.GenerateWebsiteArticle payload = (JobPayload.GenerateWebsiteArticle) job.payload();
+                    yield projects.generateWebsiteArticle(actor, payload.brief(), payload.policy(), job.id()).id();
                 }
                 case PUBLISH_ARTICLE -> {
                     JobPayload.PublishArticle payload = (JobPayload.PublishArticle) job.payload();

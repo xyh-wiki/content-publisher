@@ -9,6 +9,8 @@ import io.contentpublisher.platform.domain.JobPayload;
 import io.contentpublisher.platform.domain.JobStatus;
 import io.contentpublisher.platform.domain.JobType;
 import io.contentpublisher.platform.domain.ProjectStatus;
+import io.contentpublisher.platform.domain.TopicBrief;
+import io.contentpublisher.platform.domain.WebsiteBrief;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -16,6 +18,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -57,6 +60,21 @@ public final class JobApplicationService {
                 hash("GENERATE_ARTICLE", projectId.toString(), policy.toString()));
     }
 
+    public Job submitTopicArticleGeneration(ActorContext actor, TopicBrief brief, GenerationPolicy policy,
+                                            String idempotencyKey) {
+        JobPayload.GenerateTopicArticle payload = new JobPayload.GenerateTopicArticle(brief, policy);
+        return submit(actor, JobType.GENERATE_TOPIC_ARTICLE, payload, idempotencyKey,
+                hash("GENERATE_TOPIC_ARTICLE", brief.toString(), policy.toString()));
+    }
+
+    public Job submitWebsiteArticleGeneration(ActorContext actor, WebsiteBrief brief, GenerationPolicy policy,
+                                              String idempotencyKey) {
+        validateWebsiteUrlForStorage(brief.websiteUrl());
+        JobPayload.GenerateWebsiteArticle payload = new JobPayload.GenerateWebsiteArticle(brief, policy);
+        return submit(actor, JobType.GENERATE_WEBSITE_ARTICLE, payload, idempotencyKey,
+                hash("GENERATE_WEBSITE_ARTICLE", brief.toString(), policy.toString()));
+    }
+
     public Job submitPublication(ActorContext actor, UUID articleId, UUID channelAccountId,
                                  String canonicalUrl, String idempotencyKey) {
         String normalizedCanonicalUrl = publishing.validateCanonicalUrl(canonicalUrl);
@@ -69,6 +87,13 @@ public final class JobApplicationService {
     public Job getJob(ActorContext actor, UUID jobId) {
         return jobs.findJobById(actor.tenantId(), jobId)
                 .orElseThrow(() -> new ApplicationException("JOB_NOT_FOUND", "任务不存在"));
+    }
+
+    public List<Job> listJobs(ActorContext actor, int limit) {
+        if (limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("列表查询数量必须在 1 到 100 之间");
+        }
+        return jobs.findRecentJobs(actor.tenantId(), limit);
     }
 
     private Job submit(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey, String requestHash) {
@@ -108,6 +133,21 @@ public final class JobApplicationService {
             }
         } catch (IllegalArgumentException exception) {
             throw new ApplicationException("GIT_URL_INVALID", "Git 地址格式无效", exception);
+        }
+    }
+
+    private void validateWebsiteUrlForStorage(String websiteUrl) {
+        try {
+            java.net.URI uri = java.net.URI.create(websiteUrl);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+                    || uri.getUserInfo() != null || uri.getFragment() != null) {
+                throw new ApplicationException("WEBSITE_URL_REJECTED",
+                        "网站链接必须为不含账号密码和片段的 HTTPS URL");
+            }
+        } catch (ApplicationException exception) {
+            throw exception;
+        } catch (IllegalArgumentException exception) {
+            throw new ApplicationException("WEBSITE_URL_INVALID", "网站链接格式无效", exception);
         }
     }
 

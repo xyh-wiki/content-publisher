@@ -13,7 +13,15 @@ import java.util.UUID;
 class ArticleEntity {
     @Id UUID id;
     @Column(name = "tenant_id", nullable = false, length = 100) String tenantId;
-    @Column(name = "project_id", nullable = false) UUID projectId;
+    @Column(name = "project_id") UUID projectId;
+    @Column(name = "source_type", nullable = false, length = 20) String sourceType;
+    @Column(name = "source_title", length = 300) String sourceTitle;
+    @Column(name = "source_url", length = 2048) String sourceUrl;
+    @Column(name = "source_description", length = 4000) String sourceDescription;
+    @Column(name = "target_audience", length = 500) String targetAudience;
+    @Column(name = "article_type", length = 50) String articleType;
+    @Column(name = "knowledge_level", length = 30) String knowledgeLevel;
+    @Column(name = "source_keywords_json", nullable = false, columnDefinition = "text") String sourceKeywordsJson;
     @Column(name = "generation_job_id", unique = true) UUID generationJobId;
     @Column(nullable = false, length = 500) String title;
     @Column(nullable = false, length = 2000) String summary;

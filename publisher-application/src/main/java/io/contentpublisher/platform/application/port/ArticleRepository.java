@@ -12,5 +12,7 @@ public interface ArticleRepository {
     Article saveWithVersion(Article article, ArticleVersion version);
     Optional<Article> findArticleById(String tenantId, UUID id);
     Optional<Article> findByGenerationJobId(String tenantId, UUID generationJobId);
+    List<Article> findRecentArticles(String tenantId, int limit);
+    List<Article> findRecentByProjectId(String tenantId, UUID projectId, int limit);
     List<ArticleVersion> findVersions(String tenantId, UUID articleId);
 }

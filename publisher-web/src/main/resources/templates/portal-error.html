@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><title>操作失败 · Content Publisher</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}"></head>
+<body class="dashboard-page"><main class="message-shell"><section class="message-card">
+    <span class="message-code" th:text="${code}">ERROR</span><p class="eyebrow dark">REQUEST FAILED</p><h1>无法完成当前操作</h1>
+    <p th:text="${message}">请求处理失败。</p><a class="primary-link" th:href="@{/projects}">返回项目中心</a>
+</section></main></body></html>
