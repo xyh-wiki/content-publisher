@@ -2,7 +2,7 @@
 
 ## 1. 技术目标
 
-项目采用模块化单体架构，在保持部署简单的同时，将领域、应用用例和外部技术适配器隔离。当前架构已承载 10 个发布渠道，并为管理前端、任务扩容和更多合规渠道预留稳定边界。
+项目采用模块化单体架构，在保持部署简单的同时，将领域、应用用例和外部技术适配器隔离。当前架构已承载管理工作台和 10 个发布渠道，并为任务扩容和更多合规渠道预留稳定边界。
 
 技术原则：
 
@@ -20,11 +20,12 @@
 | 语言 | Java 17 |
 | 应用框架 | Spring Boot 3.5 |
 | Web | Spring MVC、Bean Validation |
-| 安全 | Spring Security、OAuth2 Resource Server、JWT |
+| 安全 | Spring Security、数据库表单登录、OAuth2 Resource Server、JWT |
 | 数据访问 | Spring Data JPA、Hibernate |
 | 数据迁移 | Flyway |
 | 生产数据库 | PostgreSQL |
-| 开发/测试数据库 | H2 PostgreSQL Compatibility Mode |
+| 开发数据库 | 本机 PostgreSQL |
+| 自动化测试数据库 | H2 PostgreSQL Compatibility Mode |
 | Git | Eclipse JGit |
 | AI | Java HttpClient + OpenAI Chat Completions 兼容协议 |
 | 测试 | JUnit 5、AssertJ、Mockito、MockMvc |
@@ -35,7 +36,7 @@
 ```text
 ┌──────────────────────────────────────────────┐
 │ publisher-web                                │
-│ Controller / DTO / JWT / Error Protocol      │
+│ Controller / DTO / Login / JWT / Error       │
 └──────────────────────┬───────────────────────┘
                        │
 ┌──────────────────────▼───────────────────────┐
@@ -70,7 +71,7 @@
 | 凭据加密 | `publisher-infrastructure/.../channels/AesGcmCredentialVault.java` |
 | 渠道地址安全策略 | `publisher-infrastructure/.../channels/SecureChannelEndpointPolicy.java` |
 | 渠道发布适配器 | `publisher-infrastructure/.../channels/*ChannelPublisher.java` |
-| JWT 安全 | `publisher-web/.../security/SecurityConfiguration.java` |
+| 登录与 JWT 安全 | `publisher-web/.../security/SecurityConfiguration.java` |
 | 租户身份解析 | `publisher-web/.../security/RequestActorProvider.java` |
 | 项目 API | `publisher-web/.../controller/ProjectController.java` |
 | 任务 API | `publisher-web/.../controller/JobController.java` |
@@ -200,6 +201,18 @@ Editor/Admin
 ```
 
 发布调用默认不自动重试。外部 API 普遍缺少统一幂等协议，网络中断时结果可能不确定；盲目重试会造成重复内容。失败记录保留供后续管理员核对和重放功能使用。
+
+### 6.4 平台内容适配与人工发布
+
+`PlatformContentAdapter` 是纯应用层组件，根据 `ChannelCatalog` 将文章主稿转换为 `AdaptedContent`。输出包含渠道类型、内容格式、标题、正文、标签和字符上限。所有 API Publisher 接收同一个 `AdaptedContent`，Web 人工发布工作区也调用同一组件，保证页面预览与实际发布规则一致。
+
+`ChannelCatalog` 维护平台展示名称、API 支持状态、内容格式、字符限制、官方编辑入口和允许的发布结果域名。无稳定 API 的渠道不创建 `channel_accounts`，因此不保存第三方登录凭据。
+
+人工发布通过 `manual_publications` 保存最终标题、正文、格式、外部 URL、操作人和时间。保存前校验文章状态、渠道内容格式、字符限制、HTTPS 以及结果 URL 的平台域名。
+
+`PublicationRecord` 是应用层统一只读模型。`PublishingApplicationService` 分别从 `PublicationRepository.findRecentApi` 与 `ManualPublicationRepository.findRecent` 读取租户内记录，补充安全的账号展示名称与内容格式后合并排序。该设计不修改两张事实表，也不会把渠道密文凭据或人工正文快照暴露给页面/API。
+
+`/publishing` 基于统一记录构建文章/渠道最新状态矩阵和完整时间线；`GET /api/v1/publications` 提供同一安全视图。单条 API 发布详情接口 `/api/v1/publications/{publicationId}` 保持兼容。
 
 ## 7. 持久化任务设计
 
@@ -359,6 +372,7 @@ Controller 不接受 `tenantId` 参数。应用服务把 `ActorContext.tenantId`
 | `jobs` | 持久化异步任务 |
 | `channel_accounts` | 渠道元数据和加密凭据 |
 | `publications` | 渠道发布状态和外部资源定位 |
+| `manual_publications` | 人工发布适配内容快照、外链、操作人和时间 |
 | `audit_logs` | 业务审计 |
 | `flyway_schema_history` | 数据库版本 |
 
@@ -382,6 +396,10 @@ Controller 不接受 `tenantId` 参数。应用服务把 `ActorContext.tenantId`
 | V5 | 文章当前版本号和不可变版本快照 |
 | V6 | 发布记录 canonical URL |
 | V7 | 渠道凭据指纹、账号版本与版本检查约束 |
+| V8 | 本地用户、租户身份和用户角色表 |
+| V9 | 租户级 AI 服务配置和加密 API Key |
+| V10 | 本地用户首次登录强制修改密码 |
+| V11 | 人工发布内容快照和外部链接 |
 
 已发布迁移禁止修改。新增结构必须创建下一版本脚本，并同时验证 H2 和 PostgreSQL 语法兼容性。
 
@@ -442,15 +460,22 @@ POST /api/v1/articles/{articleId}/publications
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `DB_URL` | H2 文件库 | 生产必须改为 PostgreSQL |
-| `DB_USERNAME` | `sa` | 数据库用户 |
+| `DB_URL` | `jdbc:postgresql://127.0.0.1:5432/content_publisher` | PostgreSQL JDBC 地址 |
+| `DB_USERNAME` | `content_publisher` | 数据库用户 |
 | `DB_PASSWORD` | 空 | 生产必填 |
 
 ### 13.2 安全
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `PUBLISHER_SECURITY_ENABLED` | `false` | 生产必须为 true |
+| `PUBLISHER_SECURITY_ENABLED` | `false` | 启用 JWT Resource Server；本地登录模式保持 false |
+| `PUBLISHER_LOCAL_SECURITY_ENABLED` | `false` | 启用 PostgreSQL 本地登录；与 JWT 模式互斥 |
+| `PUBLISHER_LOCAL_ADMIN_USERNAME` | 空 | 首次启动创建的管理员用户名 |
+| `PUBLISHER_LOCAL_ADMIN_PASSWORD` | 空 | 首次启动密码，至少 16 位，初始化后移除 |
+| `PUBLISHER_LOCAL_ADMIN_TENANT` | `local` | 首次管理员所属租户 |
+| `PUBLISHER_LOCAL_ADMIN_MUST_CHANGE_PASSWORD` | `true` | 初始管理员首次登录强制修改密码 |
+| `PUBLISHER_SESSION_COOKIE_SECURE` | `false` | HTTPS 部署必须为 true |
+| `PUBLISHER_SESSION_TIMEOUT` | `30m` | 登录会话超时 |
 | `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI` | 无 | OIDC Issuer |
 | `PUBLISHER_SECURITY_TENANT_CLAIM` | `tenant_id` | 租户 Claim |
 | `PUBLISHER_SECURITY_ROLES_CLAIM` | `roles` | 角色 Claim |
@@ -474,6 +499,11 @@ POST /api/v1/articles/{articleId}/publications
 | `PUBLISHER_AI_MODEL` | `qwen3:14b` |
 | `PUBLISHER_AI_TIMEOUT` | `90s` |
 | `PUBLISHER_AI_TEMPERATURE` | `0.2` |
+| `PUBLISHER_AI_ALLOWED_HOSTS` | 空；允许任意公网 HTTPS 域名 |
+| `PUBLISHER_AI_ALLOW_PRIVATE_ADDRESSES` | `false` |
+| `PUBLISHER_SECRETS_ENCRYPTION_KEY` | 空；Web 保存 API Key 前必须配置 Base64 32 字节密钥 |
+
+数据库存在租户级 AI 配置时优先于环境默认值。API Key 使用 AES-256-GCM 保存，AAD 包含租户标识；密文跨租户替换会导致认证标签校验失败。AI HTTP 客户端不跟随重定向，每次请求前重新执行 URL、域名和解析地址校验，并限制响应体为 2MB。
 
 `PUBLISHER_AI_API_KEY` 无安全默认值，必须通过运行环境注入。
 
@@ -550,7 +580,7 @@ GET /actuator/health/readiness
 ### 15.3 生产要求
 
 - 使用 PostgreSQL，不使用 H2 文件库承载正式数据。
-- 开启 JWT 安全模式。
+- 开启本地登录或 JWT 安全模式，禁止两者同时关闭。
 - 通过 TLS 反向代理访问。
 - API Key 和数据库密码由 Secret 管理器或受限环境文件注入。
 - 配置数据库备份和恢复演练。
