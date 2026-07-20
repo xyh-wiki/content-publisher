@@ -103,7 +103,9 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get("/projects").session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("导入 Git 项目")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("导入 Git 项目")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-source-workspace")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("主题教程")));
 
         mockMvc.perform(post("/projects/imports").session(session)
                         .param("gitUrl", "https://github.com/contentpublisher/portal-test.git")
@@ -131,7 +133,7 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get("/projects").session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("按关键词或描述创建知识教程")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("按主题创建知识教程")));
 
         var submitted = mockMvc.perform(post("/articles/topic-generations").session(session).with(csrf())
                         .param("topic", "Spring Boot 生产环境可观测性")
@@ -162,7 +164,7 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get("/projects").session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("从网站链接生成推荐文章")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("从网站生成推荐文章")));
 
         var submitted = mockMvc.perform(post("/articles/website-generations").session(session).with(csrf())
                         .param("websiteUrl", "https://example.com/product")
@@ -332,6 +334,8 @@ class LocalSecurityIntegrationTest {
 
             mockMvc.perform(get("/projects").session(session))
                     .andExpect(status().isOk())
+                    .andExpect(content().string(org.hamcrest.Matchers.not(
+                            org.hamcrest.Matchers.containsString("data-source-workspace"))))
                     .andExpect(content().string(org.hamcrest.Matchers.not(
                             org.hamcrest.Matchers.containsString("action=\"/projects/imports\""))))
                     .andExpect(content().string(org.hamcrest.Matchers.not(

@@ -57,6 +57,44 @@
         syncCredentials();
     }
 
+    const sourceWorkspace = document.querySelector('[data-source-workspace]');
+    if (sourceWorkspace) {
+        const tabs = [...sourceWorkspace.querySelectorAll('[data-source-tab]')];
+        const panels = [...sourceWorkspace.querySelectorAll('[data-source-panel]')];
+        const activateSource = source => {
+            const available = tabs.some(tab => tab.dataset.sourceTab === source);
+            const selected = available ? source : sourceWorkspace.dataset.defaultSource;
+            tabs.forEach(tab => {
+                const active = tab.dataset.sourceTab === selected;
+                tab.classList.toggle('active', active);
+                tab.setAttribute('aria-selected', String(active));
+                tab.tabIndex = active ? 0 : -1;
+            });
+            panels.forEach(panel => {
+                panel.hidden = panel.dataset.sourcePanel !== selected;
+            });
+        };
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => {
+                activateSource(tab.dataset.sourceTab);
+                window.history.replaceState(null, '', `#source-${tab.dataset.sourceTab}`);
+            });
+            tab.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+                event.preventDefault();
+                const nextIndex = event.key === 'ArrowRight'
+                    ? (index + 1) % tabs.length
+                    : (index - 1 + tabs.length) % tabs.length;
+                tabs[nextIndex].focus();
+                tabs[nextIndex].click();
+            });
+        });
+        const hashSource = window.location.hash.startsWith('#source-')
+            ? window.location.hash.replace('#source-', '')
+            : sourceWorkspace.dataset.defaultSource;
+        activateSource(hashSource);
+    }
+
     document.querySelectorAll('[data-count-source]').forEach(counter => {
         const source = document.querySelector(counter.dataset.countSource);
         const limit = Number(counter.dataset.countLimit || 0);

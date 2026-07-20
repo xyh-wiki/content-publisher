@@ -61,6 +61,7 @@ public class PortalManagementController {
 
     @GetMapping("/projects")
     public String projects(Model model) {
+        activateSource(model, "git");
         populateSourceForms(model);
         populateWorkspace(model);
         return "projects";
@@ -70,6 +71,7 @@ public class PortalManagementController {
     public String generateTopicArticle(@Valid @ModelAttribute("topicArticleForm") CreateTopicArticleForm form,
                                        BindingResult bindingResult, Model model) {
         if (bindingResult.hasErrors()) {
+            activateSource(model, "topic");
             populateSourceForms(model);
             populateWorkspace(model);
             return "projects";
@@ -85,6 +87,7 @@ public class PortalManagementController {
             return "redirect:/jobs/" + job.id();
         } catch (ApplicationException | IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
+            activateSource(model, "topic");
             populateSourceForms(model);
             populateWorkspace(model);
             return "projects";
@@ -95,6 +98,7 @@ public class PortalManagementController {
     public String generateWebsiteArticle(@Valid @ModelAttribute("websiteArticleForm") CreateWebsiteArticleForm form,
                                          BindingResult bindingResult, Model model) {
         if (bindingResult.hasErrors()) {
+            activateSource(model, "website");
             populateSourceForms(model);
             populateWorkspace(model);
             return "projects";
@@ -111,6 +115,7 @@ public class PortalManagementController {
             return "redirect:/jobs/" + job.id();
         } catch (ApplicationException | IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
+            activateSource(model, "website");
             populateSourceForms(model);
             populateWorkspace(model);
             return "projects";
@@ -121,6 +126,7 @@ public class PortalManagementController {
     public String importProject(@Valid @ModelAttribute("importProjectForm") ImportProjectForm form,
                                 BindingResult bindingResult, Model model) {
         if (bindingResult.hasErrors()) {
+            activateSource(model, "git");
             populateSourceForms(model);
             populateWorkspace(model);
             return "projects";
@@ -131,6 +137,7 @@ public class PortalManagementController {
             return "redirect:/jobs/" + job.id();
         } catch (ApplicationException | IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
+            activateSource(model, "git");
             populateSourceForms(model);
             populateWorkspace(model);
             return "projects";
@@ -281,6 +288,10 @@ public class PortalManagementController {
             form.setIdempotencyKey(idempotencyKey("website"));
             model.addAttribute("websiteArticleForm", form);
         }
+    }
+
+    private void activateSource(Model model, String source) {
+        if (!model.containsAttribute("activeSourcePanel")) model.addAttribute("activeSourcePanel", source);
     }
 
     private GenerateArticleForm newGenerationForm() {
