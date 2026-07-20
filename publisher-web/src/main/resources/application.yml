@@ -75,6 +75,7 @@ publisher:
     timeout: ${PUBLISHER_WEBSITE_TIMEOUT:20s}
     max-response-bytes: ${PUBLISHER_WEBSITE_MAX_RESPONSE_BYTES:2000000}
     max-text-characters: ${PUBLISHER_WEBSITE_MAX_TEXT_CHARACTERS:100000}
+    min-text-characters: ${PUBLISHER_WEBSITE_MIN_TEXT_CHARACTERS:20}
   ai:
     enabled: ${PUBLISHER_AI_ENABLED:false}
     base-url: ${PUBLISHER_AI_BASE_URL:http://127.0.0.1:11434/v1}

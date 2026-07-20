@@ -50,23 +50,56 @@ public class SecureWebsiteInspector implements WebsiteInspector {
                 throw new ApplicationException("WEBSITE_CONTENT_REJECTED", "网站响应不是 HTML 或纯文本");
             }
             String body = readLimited(response.body());
-            if (contentType.startsWith("text/plain")) {
-                return new WebsiteSnapshot(uri.toString(), uri.getHost(), "", limitText(body));
-            }
-            Document document = Jsoup.parse(body, uri.toString());
-            document.select("script,style,noscript,svg,canvas,iframe").remove();
-            String title = document.title().isBlank() ? uri.getHost() : document.title().trim();
-            String description = document.select("meta[name=description]").attr("content").trim();
-            String text = limitText(document.body() == null ? document.text() : document.body().text());
-            if (text.length() < 100) {
-                throw new ApplicationException("WEBSITE_CONTENT_REJECTED", "网站可提取的公开文本过少");
-            }
-            return new WebsiteSnapshot(uri.toString(), limited(title, 300), limited(description, 2000), text);
+            return extractSnapshot(uri, contentType, body);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new ApplicationException("WEBSITE_FETCH_INTERRUPTED", "网站抓取被中断", exception);
         } catch (IOException exception) {
             throw new ApplicationException("WEBSITE_FETCH_FAILED", "网站抓取失败", exception);
+        }
+    }
+
+    WebsiteSnapshot extractSnapshot(URI uri, String contentType, String body) {
+        if (contentType.startsWith("text/plain")) {
+            String text = limitText(body);
+            requireUsableText(text);
+            return new WebsiteSnapshot(uri.toString(), uri.getHost(), "", text);
+        }
+        Document document = Jsoup.parse(body, uri.toString());
+        String documentTitle = document.title().trim();
+        String description = firstContent(document, "meta[name=description]", "meta[property=og:description]",
+                "meta[name=twitter:description]");
+        String socialTitle = firstContent(document, "meta[property=og:title]", "meta[name=twitter:title]");
+        document.select("script,style,svg,canvas,iframe").remove();
+        String visibleText = document.body() == null ? document.text() : document.body().text();
+        java.util.LinkedHashSet<String> sources = new java.util.LinkedHashSet<>();
+        addText(sources, visibleText);
+        addText(sources, description);
+        addText(sources, documentTitle);
+        addText(sources, socialTitle);
+        String text = limitText(String.join("。", sources));
+        requireUsableText(text);
+        String title = documentTitle.isBlank() ? (socialTitle.isBlank() ? uri.getHost() : socialTitle) : documentTitle;
+        return new WebsiteSnapshot(uri.toString(), limited(title, 300), limited(description, 2000), text);
+    }
+
+    private String firstContent(Document document, String... selectors) {
+        for (String selector : selectors) {
+            String value = document.select(selector).attr("content").trim();
+            if (!value.isBlank()) return value;
+        }
+        return "";
+    }
+
+    private void addText(java.util.Set<String> values, String value) {
+        String normalized = value == null ? "" : value.replaceAll("\\s+", " ").trim();
+        if (!normalized.isBlank()) values.add(normalized);
+    }
+
+    private void requireUsableText(String text) {
+        if (text.length() < properties.minTextCharacters()) {
+            throw new ApplicationException("WEBSITE_CONTENT_REJECTED",
+                    "网站未提供足够的公开正文或描述信息，可能需要登录或依赖浏览器脚本加载");
         }
     }
 
