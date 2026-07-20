@@ -1,0 +1,70 @@
+spring:
+  application:
+    name: content-publisher
+  datasource:
+    url: ${DB_URL:jdbc:h2:file:/data/services/content-publisher/data/publisher;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH}
+    username: ${DB_USERNAME:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  jackson:
+    default-property-inclusion: non_null
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+publisher:
+  jobs:
+    worker-enabled: ${PUBLISHER_JOBS_WORKER_ENABLED:true}
+    max-active-jobs-per-tenant: ${PUBLISHER_JOBS_MAX_ACTIVE_PER_TENANT:20}
+    max-attempts: ${PUBLISHER_JOBS_MAX_ATTEMPTS:4}
+    poll-interval: ${PUBLISHER_JOBS_POLL_INTERVAL:1s}
+    lock-timeout: ${PUBLISHER_JOBS_LOCK_TIMEOUT:5m}
+    initial-retry-delay: ${PUBLISHER_JOBS_INITIAL_RETRY_DELAY:10s}
+    max-retry-delay: ${PUBLISHER_JOBS_MAX_RETRY_DELAY:5m}
+  security:
+    enabled: ${PUBLISHER_SECURITY_ENABLED:false}
+    tenant-claim: ${PUBLISHER_SECURITY_TENANT_CLAIM:tenant_id}
+    roles-claim: ${PUBLISHER_SECURITY_ROLES_CLAIM:roles}
+    default-tenant: ${PUBLISHER_DEFAULT_TENANT:local}
+    default-subject: ${PUBLISHER_DEFAULT_SUBJECT:local-developer}
+  git:
+    work-directory: ${GIT_WORK_DIRECTORY:/data/tmp/content-publisher}
+    allowed-hosts: ${GIT_ALLOWED_HOSTS:github.com,gitlab.com,gitee.com}
+    timeout-seconds: ${GIT_TIMEOUT_SECONDS:30}
+    max-repository-bytes: ${GIT_MAX_REPOSITORY_BYTES:104857600}
+    max-files: ${GIT_MAX_FILES:2000}
+    max-readme-characters: ${GIT_MAX_README_CHARACTERS:60000}
+  ai:
+    enabled: ${PUBLISHER_AI_ENABLED:false}
+    base-url: ${PUBLISHER_AI_BASE_URL:http://127.0.0.1:11434/v1}
+    api-key: ${PUBLISHER_AI_API_KEY:}
+    model: ${PUBLISHER_AI_MODEL:qwen3:14b}
+    timeout: ${PUBLISHER_AI_TIMEOUT:90s}
+    temperature: ${PUBLISHER_AI_TEMPERATURE:0.2}
+
+logging:
+  pattern:
+    level: "%5p [traceId=%X{traceId:-}]"

@@ -1,0 +1,118 @@
+package io.contentpublisher.platform.application;
+
+import io.contentpublisher.platform.application.port.AuditRecorder;
+import io.contentpublisher.platform.application.port.JobRepository;
+import io.contentpublisher.platform.domain.ActorContext;
+import io.contentpublisher.platform.domain.GenerationPolicy;
+import io.contentpublisher.platform.domain.Job;
+import io.contentpublisher.platform.domain.JobPayload;
+import io.contentpublisher.platform.domain.JobStatus;
+import io.contentpublisher.platform.domain.JobType;
+import io.contentpublisher.platform.domain.ProjectStatus;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Clock;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.UUID;
+
+public final class JobApplicationService {
+    private final JobRepository jobs;
+    private final ProjectApplicationService projects;
+    private final AuditRecorder auditRecorder;
+    private final Clock clock;
+    private final int maxActiveJobsPerTenant;
+    private final int maxAttempts;
+
+    public JobApplicationService(JobRepository jobs, ProjectApplicationService projects, AuditRecorder auditRecorder,
+                                 Clock clock, int maxActiveJobsPerTenant, int maxAttempts) {
+        this.jobs = jobs;
+        this.projects = projects;
+        this.auditRecorder = auditRecorder;
+        this.clock = clock;
+        this.maxActiveJobsPerTenant = maxActiveJobsPerTenant;
+        this.maxAttempts = maxAttempts;
+    }
+
+    public Job submitImport(ActorContext actor, String gitUrl, String branch, String idempotencyKey) {
+        validateGitUrlForStorage(gitUrl);
+        JobPayload.ImportProject payload = new JobPayload.ImportProject(gitUrl, branch);
+        return submit(actor, JobType.IMPORT_PROJECT, payload, idempotencyKey,
+                hash("IMPORT_PROJECT", gitUrl, value(branch)));
+    }
+
+    public Job submitArticleGeneration(ActorContext actor, UUID projectId, GenerationPolicy policy,
+                                       String idempotencyKey) {
+        if (projects.getProject(actor, projectId).status() != ProjectStatus.READY) {
+            throw new ApplicationException("PROJECT_NOT_READY", "项目尚未完成仓库分析");
+        }
+        JobPayload.GenerateArticle payload = new JobPayload.GenerateArticle(projectId, policy);
+        return submit(actor, JobType.GENERATE_ARTICLE, payload, idempotencyKey,
+                hash("GENERATE_ARTICLE", projectId.toString(), policy.toString()));
+    }
+
+    public Job getJob(ActorContext actor, UUID jobId) {
+        return jobs.findJobById(actor.tenantId(), jobId)
+                .orElseThrow(() -> new ApplicationException("JOB_NOT_FOUND", "任务不存在"));
+    }
+
+    private Job submit(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey, String requestHash) {
+        validateIdempotencyKey(idempotencyKey);
+        Job existing = jobs.findByIdempotencyKey(actor.tenantId(), idempotencyKey).orElse(null);
+        if (existing != null) {
+            if (existing.type() != type || !existing.requestHash().equals(requestHash)) {
+                throw new ApplicationException("IDEMPOTENCY_KEY_CONFLICT", "幂等键已用于不同请求");
+            }
+            return existing;
+        }
+        Instant now = clock.instant();
+        Job candidate = new Job(UUID.randomUUID(), actor.tenantId(), actor.subject(), type, JobStatus.PENDING,
+                payload, idempotencyKey, requestHash, 0, maxAttempts, now, null, null, null,
+                null, null, now, now);
+        Job saved = jobs.createIfWithinQuota(candidate, maxActiveJobsPerTenant)
+                .orElseThrow(() -> new ApplicationException("TENANT_JOB_QUOTA_EXCEEDED", "租户活跃任务数量已达到上限"));
+        auditRecorder.record(actor, "JOB_SUBMITTED", "JOB", saved.id(),
+                Map.of("jobType", type.name(), "idempotencyKey", idempotencyKey));
+        return saved;
+    }
+
+    private void validateIdempotencyKey(String key) {
+        if (key == null || !key.matches("[A-Za-z0-9._:-]{8,128}")) {
+            throw new ApplicationException("IDEMPOTENCY_KEY_INVALID",
+                    "Idempotency-Key 必须为 8 到 128 位字母、数字、点、下划线、冒号或连字符");
+        }
+    }
+
+    private void validateGitUrlForStorage(String gitUrl) {
+        try {
+            java.net.URI uri = java.net.URI.create(gitUrl);
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+                    || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) {
+                throw new ApplicationException("GIT_URL_REJECTED",
+                        "Git 地址必须为不含凭据、查询参数和片段的 HTTPS URL");
+            }
+        } catch (IllegalArgumentException exception) {
+            throw new ApplicationException("GIT_URL_INVALID", "Git 地址格式无效", exception);
+        }
+    }
+
+    private String hash(String... values) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (String value : values) {
+                digest.update(value.getBytes(StandardCharsets.UTF_8));
+                digest.update((byte) 0x1f);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("运行环境缺少 SHA-256", exception);
+        }
+    }
+
+    private String value(String value) {
+        return value == null ? "" : value;
+    }
+}
