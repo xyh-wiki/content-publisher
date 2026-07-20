@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: content_publisher
+      POSTGRES_USER: content_publisher
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - ${PUBLISHER_SERVICE_DATA_DIR:-/data/services/content-publisher/data}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U content_publisher -d content_publisher"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  publisher:
+    build:
+      context: ..
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/content_publisher
+      DB_USERNAME: content_publisher
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      PUBLISHER_SECURITY_ENABLED: ${PUBLISHER_SECURITY_ENABLED:-true}
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:?SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI is required}
+      PUBLISHER_SECURITY_TENANT_CLAIM: ${PUBLISHER_SECURITY_TENANT_CLAIM:-tenant_id}
+      PUBLISHER_SECURITY_ROLES_CLAIM: ${PUBLISHER_SECURITY_ROLES_CLAIM:-roles}
+      PUBLISHER_JOBS_WORKER_ENABLED: ${PUBLISHER_JOBS_WORKER_ENABLED:-true}
+      PUBLISHER_JOBS_MAX_ACTIVE_PER_TENANT: ${PUBLISHER_JOBS_MAX_ACTIVE_PER_TENANT:-20}
+      PUBLISHER_JOBS_MAX_ATTEMPTS: ${PUBLISHER_JOBS_MAX_ATTEMPTS:-4}
+      PUBLISHER_JOBS_LOCK_TIMEOUT: ${PUBLISHER_JOBS_LOCK_TIMEOUT:-5m}
+      PUBLISHER_AI_ENABLED: ${PUBLISHER_AI_ENABLED:-false}
+      PUBLISHER_AI_BASE_URL: ${PUBLISHER_AI_BASE_URL:-http://host.docker.internal:11434/v1}
+      PUBLISHER_AI_API_KEY: ${PUBLISHER_AI_API_KEY:-}
+      PUBLISHER_AI_MODEL: ${PUBLISHER_AI_MODEL:-qwen3:14b}
+      GIT_ALLOWED_HOSTS: ${GIT_ALLOWED_HOSTS:-github.com,gitlab.com,gitee.com}
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /data/tmp/content-publisher:uid=10001,gid=10001,mode=0700
+    security_opt:
+      - no-new-privileges:true
