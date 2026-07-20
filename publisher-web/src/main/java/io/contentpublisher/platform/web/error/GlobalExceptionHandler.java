@@ -19,13 +19,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ApplicationException.class)
     ResponseEntity<ApiError> applicationError(ApplicationException exception, HttpServletRequest request) {
         HttpStatus status = switch (exception.code()) {
-            case "PROJECT_NOT_FOUND", "SNAPSHOT_NOT_FOUND", "JOB_NOT_FOUND" -> HttpStatus.NOT_FOUND;
-            case "AI_DISABLED", "PROJECT_NOT_READY" -> HttpStatus.CONFLICT;
+            case "PROJECT_NOT_FOUND", "SNAPSHOT_NOT_FOUND", "JOB_NOT_FOUND", "ARTICLE_NOT_FOUND",
+                    "CHANNEL_ACCOUNT_NOT_FOUND", "PUBLICATION_NOT_FOUND" -> HttpStatus.NOT_FOUND;
+            case "AI_DISABLED", "PROJECT_NOT_READY", "ARTICLE_STATE_CONFLICT", "ARTICLE_VERSION_CONFLICT", "ARTICLE_NOT_APPROVED",
+                    "CHANNEL_ACCOUNT_DISABLED", "CHANNEL_ACCOUNT_VERSION_CONFLICT",
+                    "PUBLICATION_ALREADY_ATTEMPTED", "CHANNELS_DISABLED" -> HttpStatus.CONFLICT;
             case "IDEMPOTENCY_KEY_CONFLICT" -> HttpStatus.CONFLICT;
             case "TENANT_JOB_QUOTA_EXCEEDED" -> HttpStatus.TOO_MANY_REQUESTS;
-            case "IDEMPOTENCY_KEY_INVALID" -> HttpStatus.BAD_REQUEST;
+            case "IDEMPOTENCY_KEY_INVALID", "INVALID_ARGUMENT", "CHANNEL_CREDENTIALS_INVALID",
+                    "CHANNEL_ENCRYPTION_KEY_INVALID" -> HttpStatus.BAD_REQUEST;
             case "GIT_URL_INVALID", "GIT_URL_REJECTED", "GIT_HOST_REJECTED", "GIT_ADDRESS_REJECTED",
                     "GIT_REPOSITORY_TOO_LARGE", "AI_OUTPUT_REJECTED" -> HttpStatus.UNPROCESSABLE_ENTITY;
+            case "CHANNEL_ENDPOINT_INVALID", "CHANNEL_ENDPOINT_REJECTED", "CHANNEL_HOST_REJECTED",
+                    "CHANNEL_ADDRESS_REJECTED", "CANONICAL_URL_REJECTED" -> HttpStatus.UNPROCESSABLE_ENTITY;
             default -> HttpStatus.BAD_GATEWAY;
         };
         return error(status, exception.code(), exception.getMessage(), request, List.of());

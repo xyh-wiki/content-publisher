@@ -64,6 +64,11 @@ publisher:
     model: ${PUBLISHER_AI_MODEL:qwen3:14b}
     timeout: ${PUBLISHER_AI_TIMEOUT:90s}
     temperature: ${PUBLISHER_AI_TEMPERATURE:0.2}
+  channels:
+    enabled: ${PUBLISHER_CHANNELS_ENABLED:false}
+    encryption-key: ${PUBLISHER_CHANNELS_ENCRYPTION_KEY:}
+    allowed-hosts: ${PUBLISHER_CHANNELS_ALLOWED_HOSTS:}
+    timeout: ${PUBLISHER_CHANNELS_TIMEOUT:30s}
 
 logging:
   pattern:

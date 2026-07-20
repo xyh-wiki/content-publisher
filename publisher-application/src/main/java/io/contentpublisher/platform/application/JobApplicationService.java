@@ -22,15 +22,18 @@ import java.util.UUID;
 public final class JobApplicationService {
     private final JobRepository jobs;
     private final ProjectApplicationService projects;
+    private final PublishingApplicationService publishing;
     private final AuditRecorder auditRecorder;
     private final Clock clock;
     private final int maxActiveJobsPerTenant;
     private final int maxAttempts;
 
-    public JobApplicationService(JobRepository jobs, ProjectApplicationService projects, AuditRecorder auditRecorder,
+    public JobApplicationService(JobRepository jobs, ProjectApplicationService projects,
+                                 PublishingApplicationService publishing, AuditRecorder auditRecorder,
                                  Clock clock, int maxActiveJobsPerTenant, int maxAttempts) {
         this.jobs = jobs;
         this.projects = projects;
+        this.publishing = publishing;
         this.auditRecorder = auditRecorder;
         this.clock = clock;
         this.maxActiveJobsPerTenant = maxActiveJobsPerTenant;
@@ -52,6 +55,15 @@ public final class JobApplicationService {
         JobPayload.GenerateArticle payload = new JobPayload.GenerateArticle(projectId, policy);
         return submit(actor, JobType.GENERATE_ARTICLE, payload, idempotencyKey,
                 hash("GENERATE_ARTICLE", projectId.toString(), policy.toString()));
+    }
+
+    public Job submitPublication(ActorContext actor, UUID articleId, UUID channelAccountId,
+                                 String canonicalUrl, String idempotencyKey) {
+        String normalizedCanonicalUrl = publishing.validateCanonicalUrl(canonicalUrl);
+        publishing.assertPublishable(actor, articleId, channelAccountId);
+        JobPayload.PublishArticle payload = new JobPayload.PublishArticle(articleId, channelAccountId, normalizedCanonicalUrl);
+        return submit(actor, JobType.PUBLISH_ARTICLE, payload, idempotencyKey,
+                hash("PUBLISH_ARTICLE", articleId.toString(), channelAccountId.toString(), value(normalizedCanonicalUrl)));
     }
 
     public Job getJob(ActorContext actor, UUID jobId) {

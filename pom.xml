@@ -27,6 +27,7 @@
         <java.version>17</java.version>
         <maven.compiler.release>17</maven.compiler.release>
         <jgit.version>7.3.0.202506031305-r</jgit.version>
+        <commonmark.version>0.24.0</commonmark.version>
     </properties>
 
     <dependencyManagement>
@@ -35,6 +36,11 @@
                 <groupId>org.eclipse.jgit</groupId>
                 <artifactId>org.eclipse.jgit</artifactId>
                 <version>${jgit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.commonmark</groupId>
+                <artifactId>commonmark</artifactId>
+                <version>${commonmark.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

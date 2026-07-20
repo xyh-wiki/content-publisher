@@ -8,6 +8,7 @@ import io.contentpublisher.platform.application.port.RepositoryInspector;
 import io.contentpublisher.platform.application.port.RepositorySnapshotStore;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleStatus;
+import io.contentpublisher.platform.domain.ArticleVersion;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.GenerationPolicy;
 import io.contentpublisher.platform.domain.Project;
@@ -93,14 +94,21 @@ public final class ProjectApplicationService {
                 .orElseThrow(() -> new ApplicationException("SNAPSHOT_NOT_FOUND", "项目仓库快照不存在，请重新导入"));
         ContentGenerator.GeneratedContent generated = contentGenerator.generate(snapshot, policy);
         Instant now = clock.instant();
-        Article saved = articles.save(new Article(UUID.randomUUID(), actor.tenantId(), projectId, generationJobId,
+        Article article = new Article(UUID.randomUUID(), actor.tenantId(), projectId, generationJobId,
                 generated.title(), generated.summary(),
                 generated.markdown(), generated.keywords(), policy.language(), snapshot.revision(),
-                ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now));
+                1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
+        Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
+                article.title(), article.summary(), article.markdown(), article.keywords(), actor.subject(), now));
         auditRecorder.record(actor, "ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("projectId", projectId.toString(), "sourceRevision", snapshot.revision(),
                         "language", policy.language()));
         return saved;
+    }
+
+    public Article getArticle(ActorContext actor, UUID articleId) {
+        return articles.findArticleById(actor.tenantId(), articleId)
+                .orElseThrow(() -> new ApplicationException("ARTICLE_NOT_FOUND", "文章不存在"));
     }
 
     private String repositoryName(String gitUrl) {

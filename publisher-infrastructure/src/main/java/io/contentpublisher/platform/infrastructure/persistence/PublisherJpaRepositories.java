@@ -23,11 +23,39 @@ interface ArticleJpaRepository extends JpaRepository<ArticleEntity, UUID> {
     Optional<ArticleEntity> findByTenantIdAndGenerationJobId(String tenantId, UUID generationJobId);
 }
 
+interface ArticleVersionJpaRepository extends JpaRepository<ArticleVersionEntity, ArticleVersionKey> {
+    @Query("select v from ArticleVersionEntity v where v.tenantId = :tenantId and v.id.articleId = :articleId order by v.id.versionNumber desc")
+    List<ArticleVersionEntity> findVersions(String tenantId, UUID articleId);
+}
+
 interface SnapshotJpaRepository extends JpaRepository<SnapshotEntity, UUID> {
     Optional<SnapshotEntity> findByTenantIdAndProjectId(String tenantId, UUID projectId);
 }
 
 interface AuditLogJpaRepository extends JpaRepository<AuditLogEntity, UUID> {}
+
+interface ChannelAccountJpaRepository extends JpaRepository<ChannelAccountEntity, UUID> {
+    Optional<ChannelAccountEntity> findByTenantIdAndId(String tenantId, UUID id);
+    Optional<ChannelAccountEntity> findByTenantIdAndIdempotencyKey(String tenantId, String idempotencyKey);
+    List<ChannelAccountEntity> findAllByTenantIdOrderByCreatedAtDesc(String tenantId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update ChannelAccountEntity a set a.encryptedCredentials = :encryptedCredentials,
+                a.credentialFingerprint = :credentialFingerprint, a.status = :status,
+                a.accountVersion = :nextVersion, a.updatedBy = :updatedBy, a.updatedAt = :updatedAt
+            where a.tenantId = :tenantId and a.id = :id and a.accountVersion = :expectedVersion
+            """)
+    int updateIfVersionMatches(String tenantId, UUID id, String encryptedCredentials,
+                               String credentialFingerprint,
+                               io.contentpublisher.platform.domain.ChannelAccountStatus status,
+                               int expectedVersion, int nextVersion, String updatedBy, Instant updatedAt);
+}
+
+interface PublicationJpaRepository extends JpaRepository<PublicationEntity, UUID> {
+    Optional<PublicationEntity> findByTenantIdAndId(String tenantId, UUID id);
+    Optional<PublicationEntity> findByTenantIdAndPublicationJobId(String tenantId, UUID publicationJobId);
+}
 
 interface JobJpaRepository extends JpaRepository<JobEntity, UUID> {
     Optional<JobEntity> findByTenantIdAndId(String tenantId, UUID id);

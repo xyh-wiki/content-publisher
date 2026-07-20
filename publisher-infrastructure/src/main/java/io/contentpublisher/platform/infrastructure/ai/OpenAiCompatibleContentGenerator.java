@@ -9,6 +9,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import java.io.IOException;
 import java.net.URI;
@@ -35,7 +36,9 @@ public class OpenAiCompatibleContentGenerator implements ContentGenerator {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    public OpenAiCompatibleContentGenerator(AiProperties properties, HttpClient httpClient, ObjectMapper objectMapper) {
+    public OpenAiCompatibleContentGenerator(AiProperties properties,
+                                            @Qualifier("aiHttpClient") HttpClient httpClient,
+                                            ObjectMapper objectMapper) {
         this.properties = properties;
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;

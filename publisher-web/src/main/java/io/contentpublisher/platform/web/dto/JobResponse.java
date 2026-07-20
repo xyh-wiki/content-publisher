@@ -12,6 +12,7 @@ public record JobResponse(UUID id, String type, String status, int attempt, int 
         String resourceType = switch (job.type()) {
             case IMPORT_PROJECT -> "PROJECT";
             case GENERATE_ARTICLE -> "ARTICLE";
+            case PUBLISH_ARTICLE -> "PUBLICATION";
         };
         return new JobResponse(job.id(), job.type().name(), job.status().name(), job.attempt(), job.maxAttempts(),
                 job.scheduledAt(), job.resultResourceId(), resourceType, job.errorCode(), job.errorMessage(),

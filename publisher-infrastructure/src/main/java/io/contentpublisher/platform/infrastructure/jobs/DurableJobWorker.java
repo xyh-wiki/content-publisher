@@ -2,6 +2,7 @@ package io.contentpublisher.platform.infrastructure.jobs;
 
 import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.application.ProjectApplicationService;
+import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.domain.ActorContext;
@@ -31,15 +32,18 @@ public class DurableJobWorker {
 
     private final JobRepository jobs;
     private final ProjectApplicationService projects;
+    private final PublishingApplicationService publishing;
     private final AuditRecorder auditRecorder;
     private final JobProperties properties;
     private final Clock clock;
     private final String workerId;
 
-    public DurableJobWorker(JobRepository jobs, ProjectApplicationService projects, AuditRecorder auditRecorder,
+    public DurableJobWorker(JobRepository jobs, ProjectApplicationService projects,
+                            PublishingApplicationService publishing, AuditRecorder auditRecorder,
                             JobProperties properties, Clock clock) {
         this.jobs = jobs;
         this.projects = projects;
+        this.publishing = publishing;
         this.auditRecorder = auditRecorder;
         this.properties = properties;
         this.clock = clock;
@@ -63,6 +67,11 @@ public class DurableJobWorker {
                 case GENERATE_ARTICLE -> {
                     JobPayload.GenerateArticle payload = (JobPayload.GenerateArticle) job.payload();
                     yield projects.generateArticle(actor, payload.projectId(), payload.policy(), job.id()).id();
+                }
+                case PUBLISH_ARTICLE -> {
+                    JobPayload.PublishArticle payload = (JobPayload.PublishArticle) job.payload();
+                    yield publishing.publish(actor, payload.articleId(), payload.channelAccountId(),
+                            payload.canonicalUrl(), job.id()).id();
                 }
             };
             Instant completedAt = clock.instant();

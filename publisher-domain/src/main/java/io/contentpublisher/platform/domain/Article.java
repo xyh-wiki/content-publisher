@@ -15,6 +15,7 @@ public record Article(
         List<String> keywords,
         String language,
         String sourceRevision,
+        int currentVersion,
         ArticleStatus status,
         String createdBy,
         String updatedBy,
@@ -22,5 +23,6 @@ public record Article(
         Instant updatedAt) {
     public Article {
         keywords = keywords == null ? List.of() : List.copyOf(keywords);
+        if (currentVersion < 1) throw new IllegalArgumentException("文章版本号必须大于零");
     }
 }
