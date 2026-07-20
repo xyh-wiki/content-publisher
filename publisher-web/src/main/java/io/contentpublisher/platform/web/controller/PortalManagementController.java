@@ -22,6 +22,7 @@ import io.contentpublisher.platform.web.form.BatchPublishArticleForm;
 import io.contentpublisher.platform.web.form.CreateTopicArticleForm;
 import io.contentpublisher.platform.web.form.CreateWebsiteArticleForm;
 import io.contentpublisher.platform.web.dto.ChannelAccountView;
+import io.contentpublisher.platform.web.dto.JobProgressView;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import jakarta.validation.Valid;
 import org.springframework.stereotype.Controller;
@@ -187,6 +188,7 @@ public class PortalManagementController {
         model.addAttribute("job", job);
         model.addAttribute("active", job.status() == JobStatus.PENDING || job.status() == JobStatus.RUNNING
                 || job.status() == JobStatus.RETRY_WAIT);
+        model.addAttribute("progress", JobProgressView.from(job));
         model.addAttribute("resultLink", resultLink(job));
         return "job-detail";
     }

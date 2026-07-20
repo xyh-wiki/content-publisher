@@ -279,6 +279,22 @@ thead .matrix-article-column { z-index: 3; background: #fafbfc; }
 .progress-number { text-align: right; }
 .progress-number strong { display: block; font-size: 28px; }
 .progress-number span { color: var(--muted); font-size: 10px; }
+.job-progress-card { overflow: hidden; }
+.job-progress-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.job-progress-heading h3 { margin: 3px 0 12px; font-size: 19px; }
+.job-progress-heading strong { display: block; font-size: 14px; }
+.job-progress-heading p:not(.section-kicker) { margin: 6px 0 0; color: var(--muted); line-height: 1.55; }
+.job-progress-heading > span { color: var(--primary); font-size: 30px; font-weight: 850; letter-spacing: -.04em; }
+.job-progress-track { height: 12px; margin-top: 22px; overflow: hidden; border-radius: 999px; background: #edf0f5; box-shadow: inset 0 1px 2px rgba(26,34,52,.08); }
+.job-progress-track > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5b5ce2, #7375ee 68%, #3ccfb0); box-shadow: 0 0 18px rgba(91,92,226,.3); transition: width .7s ease; }
+.job-progress-steps { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin-top: 14px; }
+.job-progress-steps span { position: relative; padding-top: 13px; color: #a0a9b8; font-size: 9px; font-weight: 750; text-align: center; }
+.job-progress-steps span::before { content: ""; position: absolute; top: 0; left: 50%; width: 7px; height: 7px; border: 2px solid #d8dde6; border-radius: 50%; background: white; transform: translateX(-50%); }
+.job-progress-steps span.done { color: #5257c8; }
+.job-progress-steps span.done::before { border-color: var(--primary); background: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft); }
+.job-live-note { display: block; margin-top: 15px; color: var(--muted); text-align: right; }
+.job-progress-sync-error .job-live-note { color: var(--danger); }
+.job-progress-failed .job-progress-track > span { background: linear-gradient(90deg, #d9536f, #ee7188); }
 .settings-summary, .security-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
 .settings-summary span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 10px; }
 .security-grid > div { padding: 0 15px; border-right: 1px solid var(--line); }
@@ -487,6 +503,8 @@ thead .matrix-article-column { z-index: 3; background: #fafbfc; }
     .workspace-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
     .source-tabs, .overview-sidebar { grid-template-columns: 1fr; }
     .source-workspace-heading, .source-panel-intro { align-items: stretch; flex-direction: column; }
+    .job-progress-heading { align-items: stretch; flex-direction: column; gap: 10px; }
+    .job-progress-heading > span { font-size: 25px; }
     .source-tab strong, .source-tab small { white-space: normal; }
     .monitor-heading { align-items: stretch; flex-direction: column; }
     .monitor-controls { justify-content: flex-start; flex-wrap: wrap; }
@@ -503,6 +521,7 @@ thead .matrix-article-column { z-index: 3; background: #fafbfc; }
     .hero-actions a { width: 100%; }
     .login-card, .password-card, .message-card { padding: 28px 22px; }
     .source-workspace-heading, .source-tabs, .source-panel { padding-left: 17px; padding-right: 17px; }
+    .job-progress-steps { grid-template-columns: repeat(2,minmax(0,1fr)); row-gap: 16px; }
     .monitor-content { padding-left: 11px; padding-right: 11px; }
     .monitor-status-strip, .monitor-metric-grid, .monitor-grid-overview, .monitor-grid-detail, .monitor-grid-feed { grid-template-columns: 1fr; }
     .monitor-status-strip > div { border-right: 0; border-bottom: 1px solid rgba(91,139,184,.14); }

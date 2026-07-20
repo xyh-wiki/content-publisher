@@ -238,7 +238,9 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get(submitted.getResponse().getRedirectedUrl()).session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("GENERATE_WEBSITE_ARTICLE")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("GENERATE_WEBSITE_ARTICLE")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("任务进度")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-job-status-url")));
     }
 
     @Test

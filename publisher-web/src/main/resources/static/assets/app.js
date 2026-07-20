@@ -107,6 +107,69 @@
         refresh();
     });
 
+    const jobLive = document.querySelector('[data-job-live]');
+    if (jobLive?.dataset.jobActive === 'true') {
+        const progressCard = document.querySelector('.job-progress-card');
+        const progressTrack = document.querySelector('.job-progress-track');
+        const progressBar = document.querySelector('[data-job-progress-bar]');
+        const progressPercent = document.querySelector('[data-job-progress-percent]');
+        const progressLabel = document.querySelector('[data-job-progress-label]');
+        const progressDetail = document.querySelector('[data-job-progress-detail]');
+        const liveNote = document.querySelector('[data-job-live-note]');
+        const status = document.querySelector('[data-job-status]');
+        const attempt = document.querySelector('[data-job-attempt]');
+        let displayedProgress = Number(progressTrack?.getAttribute('aria-valuenow') || 8);
+        let currentStatus = status?.textContent?.trim() || 'PENDING';
+        let syncing = false;
+        const renderProgress = value => {
+            displayedProgress = Math.max(0, Math.min(100, Number(value) || 0));
+            if (progressBar) progressBar.style.width = `${displayedProgress}%`;
+            if (progressPercent) progressPercent.textContent = `${Math.round(displayedProgress)}%`;
+            progressTrack?.setAttribute('aria-valuenow', String(Math.round(displayedProgress)));
+            document.querySelectorAll('[data-stage-threshold]').forEach(stage => {
+                stage.classList.toggle('done', displayedProgress >= Number(stage.dataset.stageThreshold));
+            });
+        };
+        const pollJob = async () => {
+            if (syncing) return;
+            syncing = true;
+            try {
+                const response = await fetch(jobLive.dataset.jobStatusUrl, {
+                    credentials: 'same-origin', cache: 'no-store', headers: {'Accept': 'application/json'}
+                });
+                if (!response.ok) throw new Error(`任务状态请求失败: ${response.status}`);
+                const job = await response.json();
+                currentStatus = job.status;
+                progressCard?.classList.remove('job-progress-sync-error');
+                if (progressLabel) progressLabel.textContent = job.progressLabel;
+                if (progressDetail) progressDetail.textContent = job.progressDetail;
+                if (attempt) attempt.textContent = `${job.attempt}/${job.maxAttempts}`;
+                if (status) {
+                    status.className = `status-pill status-${job.status.toLowerCase()}`;
+                    status.textContent = job.status;
+                }
+                renderProgress(job.status === 'RUNNING'
+                    ? Math.max(displayedProgress, job.progressPercent)
+                    : job.progressPercent);
+                if (liveNote) liveNote.textContent = `刚刚同步 · ${new Date().toLocaleTimeString()}`;
+                if (['SUCCEEDED', 'FAILED'].includes(job.status)) {
+                    progressCard?.classList.toggle('job-progress-failed', job.status === 'FAILED');
+                    window.setTimeout(() => window.location.reload(), 500);
+                }
+            } catch (_error) {
+                progressCard?.classList.add('job-progress-sync-error');
+                if (liveNote) liveNote.textContent = '状态同步暂时中断，正在自动重试';
+            } finally {
+                syncing = false;
+            }
+        };
+        window.setInterval(() => {
+            if (currentStatus === 'RUNNING' && displayedProgress < 88) renderProgress(displayedProgress + 0.6);
+        }, 1000);
+        window.setInterval(pollJob, 2000);
+        pollJob();
+    }
+
     const monitorScreen = document.querySelector('[data-monitor-screen]');
     if (monitorScreen) {
         const clock = monitorScreen.querySelector('[data-monitor-clock]');
