@@ -2,7 +2,7 @@
 
 企业级多渠道技术内容生成与分发平台。系统从 Git 仓库提取可验证的项目事实，通过自定义 OpenAI 兼容模型生成受控技术文章，并以多租户、可审计、可恢复的异步任务运行。
 
-当前版本已完成“Git 项目导入 → 仓库分析 → AI 文章生成 → 草稿保存”的后端闭环。社交媒体与技术社区发布适配器属于后续阶段，当前不会模拟登录或绕过平台开放接口。
+当前版本已完成“Git 项目导入 → 仓库分析 → AI 文章生成 → 人工审核 → 多渠道发布”的后端闭环。已接入 DEV、WordPress、Discourse、GitHub Discussions、Twitter/X、Reddit、Hashnode、Medium、Mastodon 和 Ghost 共 10 个官方 API 渠道；系统不会模拟登录或绕过平台开放接口。
 
 ## 交付状态
 
@@ -12,7 +12,11 @@
 | AI 文章生成与输出控制 | 已完成 | OpenAI Chat Completions 兼容协议 |
 | 多租户、权限、审计 | 已完成 | OIDC/JWT、RBAC、`tenant_id` 隔离 |
 | 持久化异步任务 | 已完成 | 幂等、配额、租约、重试、崩溃恢复 |
-| 审核、渠道发布、效果分析 | 规划中 | 详见功能说明和技术路线 |
+| 文章人工审核 | 已完成 | Admin 审核通过或驳回，未审核文章禁止发布 |
+| 10 渠道发布 | 已完成 | 长文、短帖、外链和官方 API 响应映射 |
+| 文章版本管理 | 已完成 | 不可变版本快照和 `expectedVersion` 并发控制 |
+| 渠道账号生命周期 | 已完成 | 启用、停用、凭据在线轮换和数据库原子版本控制 |
+| 发布计划、效果分析、人工协作渠道 | 规划中 | 详见功能说明和技术路线 |
 
 ## 当前能力
 
@@ -22,6 +26,10 @@
 - 控制文章语言、语气、长度、章节、必选关键词、禁用关键词及关键词数量。
 - 隔离仓库中的提示词注入内容，并对 AI JSON 输出执行确定性二次校验。
 - Git 导入和 AI 生成使用数据库持久化异步任务。
+- 渠道发布使用数据库持久化任务，保存外部内容 ID、URL 和失败状态。
+- 渠道凭据使用 256 位 AES-GCM 加密落库，并使用 HMAC-SHA256 指纹识别重复轮换；API 和日志不返回凭据。
+- 草稿或驳回文章支持受控编辑，每次修改生成不可变版本快照。
+- WordPress、Discourse、Mastodon、Ghost 自托管地址使用 HTTPS 允许列表和公网地址校验，发布前再次校验。
 - 支持幂等提交、租户配额、数据库领取锁、任务租约、指数退避重试和崩溃恢复。
 - 支持 OIDC/JWT、`VIEWER`、`EDITOR`、`ADMIN` 角色和租户级数据隔离。
 - 保存项目、文章、任务和业务审计记录；日志与 API 不输出 Token、API Key 或内部任务 Payload。
@@ -66,7 +74,7 @@ cd /data/projects/content-publisher
 mvn clean verify
 ```
 
-当前自动化测试覆盖 AI 输出约束、任务状态机、任务重试、过期租约、幂等、租户配额、数据库迁移、多租户隔离、审计和 JWT 权限。
+当前自动化测试覆盖 AI 输出约束、任务状态机、任务重试、过期租约、幂等、租户配额、数据库迁移、多租户隔离、审计、JWT 权限、凭据加密、审核门禁和渠道 API 请求。
 
 ## 本地启动
 
@@ -141,6 +149,38 @@ curl -X POST http://127.0.0.1:8080/api/v1/projects/3cc05ec9-3dd6-46b8-a5de-e96af
 
 接口同样返回 `202 Accepted`。任务完成后，`resultResourceType` 为 `ARTICLE`，`resultResourceId` 为生成的草稿文章 ID。
 
+渠道发布还需要完成以下步骤：
+
+1. Admin 创建渠道账号：`POST /api/v1/channel-accounts`。
+2. Admin 审核文章：`POST /api/v1/articles/{articleId}/approve`。
+3. Editor 或 Admin 提交发布：`POST /api/v1/articles/{articleId}/publications`。
+4. 查询任务；成功后通过 `GET /api/v1/publications/{publicationId}` 获取外部 URL。
+
+启用渠道前必须生成独立主密钥：
+
+```bash
+openssl rand -base64 32
+```
+
+将结果写入受限环境文件的 `PUBLISHER_CHANNELS_ENCRYPTION_KEY`，并设置 `PUBLISHER_CHANNELS_ENABLED=true`。该主密钥用于解密所有已保存凭据，不能直接替换；渠道账号自身的 Token/API Key 可通过凭据轮换 API 在线替换。
+
+当前渠道凭据字段：
+
+| 渠道 | 凭据字段 | 地址策略 |
+|---|---|---|
+| DEV | `apiKey` | 固定 `https://dev.to` |
+| WordPress | `username`、`applicationPassword` | HTTPS 允许列表 |
+| Discourse | `apiKey`、`apiUsername` | HTTPS 允许列表 |
+| GitHub Discussions | `token`、`repositoryId`、`categoryId` | 固定 GitHub API |
+| Twitter/X | `accessToken` | 固定 X API |
+| Reddit | `accessToken`、`subreddit` | 固定 Reddit OAuth API |
+| Hashnode | `token`、`publicationId` | 固定 Hashnode GraphQL API |
+| Medium | `token`、`authorId` | 固定 Medium API；仅适用于已有 Integration Token 的账号 |
+| Mastodon | `accessToken` | HTTPS 允许列表 |
+| Ghost | `adminApiKey` | HTTPS 允许列表；Key 格式为 `id:hexSecret` |
+
+发布请求可携带 `canonicalUrl`。该地址必须为不含凭据的 HTTPS URL；平台会将其写入支持 canonical 字段的渠道，或以原文链接附加到正文/短帖。
+
 ## 生产部署
 
 生产运行数据和环境文件放在 `/data/services/content-publisher`，源码保留在 `/data/projects/content-publisher`。Compose 模板将数据库数据绑定到服务目录，Git 临时工作区使用容器内临时文件系统。建议使用 PostgreSQL、外部 OIDC、TLS 反向代理和独立 AI 网关。
@@ -161,12 +201,12 @@ docker compose \
 
 ## 当前边界与下一阶段
 
-尚未实现：文章版本与审核、渠道账号凭据、渠道发布、UTM 链接、发布日历、效果统计和管理前端。
+尚未实现：独立审核历史表、主加密密钥迁移、UTM 策略、发布日历、效果统计、管理前端，以及无稳定开放发布 API 平台的草稿包与人工协作任务。
 
 下一阶段建议依次完成：
 
-1. 文章版本、审核流、模板及提示词版本管理。
+1. 审核历史、模板及提示词版本管理。
 2. 任务指标、积压告警、死信管理和管理员重放。
-3. 渠道凭据加密和密钥轮换。
-4. DEV、WordPress、Discourse、GitHub Discussions 首批发布适配器。
-5. Twitter/X、Reddit、Hashnode 及人工协作渠道。
+3. 渠道连通性检查、OAuth 刷新流程和主加密密钥版本化迁移。
+4. 发布日历、UTM 模板、效果回收和失败人工核对流程。
+5. 为小红书、掘金、CSDN 等无稳定开放发布 API 的平台增加合规草稿包与人工协作任务。

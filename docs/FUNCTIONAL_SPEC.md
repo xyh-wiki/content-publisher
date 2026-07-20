@@ -4,7 +4,7 @@
 
 本文档描述 Content Publisher 的产品目标、用户角色、功能范围、业务流程、业务规则和验收口径。面向产品、运营、测试、项目负责人和实施人员。
 
-当前版本聚焦内容生产链路，不把尚未实现的渠道发布能力描述为已交付功能。
+当前版本交付内容生产、人工审核、10 个官方 API 渠道发布和渠道账号生命周期管理；未实现的平台会明确标记为规划或人工协作能力。
 
 ## 2. 产品目标
 
@@ -15,15 +15,15 @@
 - 控制文章关键词、长度、章节和语言风格。
 - 防止重复提交、重复生成和任务执行中断造成的数据不一致。
 - 在多组织环境中隔离项目、文章、任务和审计数据。
-- 为后续向 Twitter/X、小红书、Reddit、DEV、WordPress 等渠道分发提供统一内容底座。
+- 为 DEV、WordPress、Discourse、GitHub Discussions、Twitter/X、Reddit、Hashnode、Medium、Mastodon、Ghost 等渠道提供统一内容底座。
 
 ## 3. 用户角色
 
 | 角色 | 主要职责 | 当前权限 |
 |---|---|---|
-| Viewer | 查看项目和任务进度 | 读取项目、读取任务 |
-| Editor | 导入项目、生成内容 | Viewer 权限，加上提交 Git 导入及文章生成任务 |
-| Admin | 平台与租户管理 | 当前拥有全部业务 API 权限，管理 API 将在后续补充 |
+| Viewer | 查看项目和任务进度 | 读取项目、文章、任务和发布结果 |
+| Editor | 导入项目、生成和发布内容 | Viewer 权限，加上提交 Git 导入、文章生成及已审核文章发布任务 |
+| Admin | 审核与渠道管理 | Editor 权限，加上文章审核、渠道账号创建、启停和凭据轮换 |
 | AI 服务 | 生成结构化内容 | 仅通过服务端调用，不直接访问数据库或用户身份信息 |
 | 后台工作器 | 执行持久化任务 | 领取任务、调用 Git/AI、更新任务状态并写审计 |
 
@@ -115,7 +115,7 @@ AI 必须返回包含以下字段的 JSON：
 - 关键词去空、去重并限制数量。
 - 不符合规则的输出不会写入文章表。
 
-成功生成的文章状态固定为 `DRAFT`。当前版本不允许直接发布。
+成功生成的文章状态固定为 `DRAFT`，必须由 Admin 审核后才能发布。
 
 ### 5.4 仓库提示词注入防护
 
@@ -136,6 +136,7 @@ README、代码注释、构建文件和目录名称均属于不可信输入。
 
 - `IMPORT_PROJECT`
 - `GENERATE_ARTICLE`
+- `PUBLISH_ARTICLE`
 
 任务状态：
 
@@ -152,7 +153,7 @@ PENDING → RUNNING → SUCCEEDED
 | PENDING | 已持久化，等待工作器领取 |
 | RUNNING | 已被某个工作器领取并持有租约 |
 | RETRY_WAIT | 临时故障，等待下一次计划执行时间 |
-| SUCCEEDED | 执行成功，`resultResourceId` 指向项目或文章 |
+| SUCCEEDED | 执行成功，`resultResourceId` 指向项目、文章或发布记录 |
 | FAILED | 永久失败、达到最大重试次数，或最后一次执行租约过期 |
 
 临时故障包括 Git 拉取失败和 AI 服务调用失败。业务参数错误、AI 输出不合格、项目状态错误等不会无限重试。
@@ -165,6 +166,8 @@ PENDING → RUNNING → SUCCEEDED
 - 同一租户使用相同键提交不同请求时，返回 `409 IDEMPOTENCY_KEY_CONFLICT`。
 - 不同租户可以使用相同幂等键。
 - 文章表通过唯一 `generation_job_id` 防止任务崩溃重试产生重复草稿。
+- 发布表通过唯一 `publication_job_id` 防止同一任务重复创建发布记录。
+- 渠道账号创建也要求幂等键；审核通过和驳回是资源状态上的天然幂等操作。
 
 ### 5.7 租户任务配额
 
@@ -184,8 +187,86 @@ PENDING → RUNNING → SUCCEEDED
 - `PROJECT_IMPORTED`
 - `PROJECT_IMPORT_FAILED`
 - `ARTICLE_GENERATED`
+- `ARTICLE_VERSION_CREATED`
+- `ARTICLE_APPROVED`
+- `ARTICLE_REJECTED`
+- `CHANNEL_ACCOUNT_CREATED`
+- `CHANNEL_ACCOUNT_STATUS_CHANGED`
+- `CHANNEL_CREDENTIALS_ROTATED`
+- `ARTICLE_PUBLISHED`
 
 审计记录包含租户、操作者、动作、目标类型、目标 ID、有限业务详情和 UTC 时间。禁止记录访问令牌、密码、API Key 和完整仓库内容。
+
+### 5.9 文章审核
+
+文章状态流转：
+
+```text
+DRAFT → APPROVED → PUBLISHED
+  └──→ REJECTED → APPROVED
+```
+
+- 只有 Admin 可以审核通过或驳回文章。
+- Editor 不能绕过审核直接发布。
+- 驳回必须提供原因，原因进入审计详情，不修改文章正文。
+- 同一审核操作重复调用返回当前文章，不产生重复副作用。
+- 草稿或已驳回文章可以编辑标题、摘要、正文和关键词。
+- 编辑请求必须携带 `expectedVersion`；版本不一致返回 `409 ARTICLE_VERSION_CONFLICT`。
+- 每次编辑递增 `currentVersion`，并在 `article_versions` 中保存不可变快照。
+- 审核通过或已发布文章不能直接修改，避免发布内容被静默改写。
+
+### 5.10 渠道账号与凭据
+
+当前渠道及凭据字段：
+
+| 渠道 | 地址 | 必需凭据 |
+|---|---|---|
+| DEV | 固定 `https://dev.to` | `apiKey` |
+| WordPress | 租户配置的 HTTPS 站点 | `username`、`applicationPassword` |
+| Discourse | 租户配置的 HTTPS 站点 | `apiKey`、`apiUsername` |
+| GitHub Discussions | 固定 `https://api.github.com` | `token`、`repositoryId`、`categoryId` |
+| Twitter/X | 固定 `https://api.x.com` | `accessToken` |
+| Reddit | 固定 `https://oauth.reddit.com` | `accessToken`、`subreddit` |
+| Hashnode | 固定 `https://gql.hashnode.com` | `token`、`publicationId` |
+| Medium | 固定 `https://api.medium.com` | `token`、`authorId` |
+| Mastodon | 租户配置的 HTTPS 实例 | `accessToken` |
+| Ghost | 租户配置的 HTTPS 站点 | `adminApiKey`，格式为 `id:hexSecret` |
+
+账号创建规则：
+
+- 只有 Admin 可以创建渠道账号。
+- 请求必须携带 `Idempotency-Key`。
+- 凭据字段必须精确匹配渠道定义，不接受多余字段。
+- 凭据使用 AES-256-GCM 加密后落库，查询接口不返回密文或明文。
+- 凭据使用 HMAC-SHA256 指纹识别相同内容，指纹不能反推出原凭据。
+- DEV、GitHub、X、Reddit、Hashnode 和 Medium API 地址不可由租户覆盖。
+- WordPress、Discourse、Mastodon 和 Ghost 主机必须位于服务器允许列表，且 DNS 不得解析到私网地址。
+- Admin 可停用或重新启用账号；停用账号不能接受新的发布任务。
+- Admin 可在线轮换平台 Token/API Key。请求必须携带 `expectedVersion`，数据库使用版本条件更新拒绝并发覆盖。
+- Medium 官方 API 不再面向新用户签发 Integration Token；该适配器仅适用于已合法持有可用 Token 的现有账号。
+
+### 5.11 渠道发布
+
+只有 `APPROVED` 或已经在其他渠道发布过的 `PUBLISHED` 文章可以提交 `PUBLISH_ARTICLE` 任务。
+
+发布结果保存：
+
+- 渠道类型和渠道账号。
+- 外部内容 ID 和公开 URL。
+- `PUBLISHING`、`PUBLISHED` 或 `FAILED` 状态。
+- 有限错误码和脱敏错误信息。
+- 可选的 HTTPS `canonicalUrl`。
+- 发布时间、创建时间和更新时间。
+
+外链处理规则：
+
+| 渠道 | `canonicalUrl` 行为 |
+|---|---|
+| DEV、Hashnode、Medium、Ghost | 写入渠道提供的 canonical/original URL 字段 |
+| WordPress、Discourse、GitHub Discussions、Reddit | 作为原文链接附加到正文 |
+| Twitter/X、Mastodon | 生成带原文链接的受长度控制短帖 |
+
+10 个渠道都会在审核后执行真实官方 API 发布，不创建浏览器自动化任务。由于这些外部 API 不统一支持幂等键，平台不会自动重试结果不确定的发布调用，以避免重复文章；管理员必须先核对渠道结果，再决定后续重放。提交任务的请求哈希包含 `canonicalUrl`，同一幂等键不能静默替换外链。
 
 ## 6. API 功能
 
@@ -194,10 +275,22 @@ PENDING → RUNNING → SUCCEEDED
 | POST | `/api/v1/projects/imports` | Editor/Admin | 提交 Git 导入任务 |
 | GET | `/api/v1/projects/{projectId}` | Viewer/Editor/Admin | 查看租户内项目 |
 | POST | `/api/v1/projects/{projectId}/articles` | Editor/Admin | 提交文章生成任务 |
+| GET | `/api/v1/articles/{articleId}` | Viewer/Editor/Admin | 查看文章 |
+| PUT | `/api/v1/articles/{articleId}` | Editor/Admin | 编辑草稿并创建新版本 |
+| GET | `/api/v1/articles/{articleId}/versions` | Viewer/Editor/Admin | 查看不可变版本列表 |
+| POST | `/api/v1/articles/{articleId}/approve` | Admin | 审核通过文章 |
+| POST | `/api/v1/articles/{articleId}/reject` | Admin | 驳回文章 |
+| POST | `/api/v1/channel-accounts` | Admin | 创建加密渠道账号 |
+| GET | `/api/v1/channel-accounts` | Editor/Admin | 查看渠道账号元数据 |
+| GET | `/api/v1/channel-accounts/{accountId}` | Editor/Admin | 查看单个渠道账号元数据 |
+| PATCH | `/api/v1/channel-accounts/{accountId}/status` | Admin | 启用或停用账号，要求 `expectedVersion` |
+| PUT | `/api/v1/channel-accounts/{accountId}/credentials` | Admin | 加密轮换凭据，要求 `expectedVersion` |
+| POST | `/api/v1/articles/{articleId}/publications` | Editor/Admin | 提交渠道发布任务 |
+| GET | `/api/v1/publications/{publicationId}` | Viewer/Editor/Admin | 查看发布结果 |
 | GET | `/api/v1/jobs/{jobId}` | Viewer/Editor/Admin | 查询租户内任务 |
 | GET | `/actuator/health` | 匿名 | 健康检查 |
 
-写接口成功返回 `202 Accepted`，并通过 `Location` 响应头给出任务查询地址。
+Git 导入、文章生成和发布任务成功返回 `202 Accepted`，并通过 `Location` 响应头给出任务查询地址；账号创建返回 `201 Created`，账号启停和凭据轮换返回 `200 OK`。
 
 ## 7. 错误处理
 
@@ -223,9 +316,18 @@ PENDING → RUNNING → SUCCEEDED
 | PROJECT_NOT_FOUND / JOB_NOT_FOUND | 404 | 当前租户内资源不存在 |
 | IDEMPOTENCY_KEY_CONFLICT | 409 | 幂等键对应不同请求 |
 | PROJECT_NOT_READY | 409 | 项目未完成分析 |
+| ARTICLE_NOT_APPROVED | 409 | 文章未通过审核 |
+| ARTICLE_STATE_CONFLICT | 409 | 审核操作与当前状态冲突 |
+| ARTICLE_VERSION_CONFLICT | 409 | 编辑所基于的文章版本已过期 |
+| CHANNEL_ACCOUNT_VERSION_CONFLICT | 409 | 渠道账号版本已被其他请求修改 |
+| CHANNEL_ACCOUNT_DISABLED | 409 | 渠道账号已停用 |
+| CHANNELS_DISABLED | 409 | 渠道发布功能未启用 |
 | TENANT_JOB_QUOTA_EXCEEDED | 429 | 活跃任务达到上限 |
 | GIT_URL_REJECTED | 422 | Git 地址违反安全规则 |
 | AI_OUTPUT_REJECTED | 422 | AI 输出未满足内容策略 |
+| CHANNEL_ENDPOINT_REJECTED | 422 | 渠道地址违反安全规则 |
+| CANONICAL_URL_REJECTED | 422 | 外链不是合规 HTTPS URL |
+| CHANNEL_RESPONSE_REJECTED | 502 | 渠道官方 API 拒绝请求 |
 
 ## 8. 数据分级
 
@@ -234,11 +336,11 @@ PENDING → RUNNING → SUCCEEDED
 | 已公开项目资料 | L1 | 防篡改、版本追踪 |
 | 项目配置和任务状态 | L2 | 租户隔离、身份认证 |
 | 未发布文章和运营策略 | L3 | 权限控制、审计、备份 |
-| AI API Key、OIDC 配置、未来渠道 Token | L4 | 环境变量或密钥系统、禁止日志输出、定期轮换 |
+| AI API Key、OIDC 配置、渠道 Token | L4 | AES-GCM 或密钥系统、禁止 API/日志输出、定期轮换 |
 
-## 9. 后续渠道范围
+## 9. 渠道范围与扩展原则
 
-后续计划覆盖不少于十个渠道：Twitter/X、Reddit、DEV、Hashnode、Medium、WordPress、Discourse、GitHub Discussions、掘金、CSDN、SegmentFault、知乎、小红书、V2EX 和 Hacker News。
+已接入 DEV、WordPress、Discourse、GitHub Discussions、Twitter/X、Reddit、Hashnode、Medium、Mastodon 和 Ghost。后续候选包括掘金、CSDN、SegmentFault、知乎、小红书、V2EX 和 Hacker News；是否接入取决于平台是否提供稳定、合规且可授权的发布接口。
 
 接入原则：
 
@@ -250,7 +352,7 @@ PENDING → RUNNING → SUCCEEDED
 ## 10. 当前版本验收标准
 
 - Git 地址安全校验有效。
-- 三版数据库迁移可从空库连续执行。
+- V1–V7 数据库迁移可从空库连续执行。
 - 写接口返回 202、任务 ID 和 Location。
 - 相同幂等请求返回同一任务。
 - 幂等冲突和租户配额返回稳定错误码。
@@ -260,3 +362,10 @@ PENDING → RUNNING → SUCCEEDED
 - 不同租户无法读取对方项目和任务。
 - Viewer 不能调用写接口。
 - AI 输出违反关键词、章节或长度要求时不得保存文章。
+- 文章编辑必须创建新版本，并拒绝过期 `expectedVersion`。
+- 未审核文章不能提交发布任务，Editor 不能执行审核。
+- 渠道凭据不能通过 API 返回，数据库只保存带随机 IV 的认证密文。
+- 凭据轮换后的数据库密文不得包含新凭据明文，并拒绝过期账号版本覆盖。
+- 自托管渠道地址必须通过 HTTPS、主机允许列表和公网地址校验。
+- 非 HTTPS `canonicalUrl` 必须在任务创建前被拒绝。
+- 发布成功后必须保存外部内容 ID、URL 和审计记录。
