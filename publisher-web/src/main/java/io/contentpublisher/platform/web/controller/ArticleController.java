@@ -59,8 +59,16 @@ public class ArticleController {
     @PutMapping("/{articleId}")
     public ArticleResponse update(@PathVariable UUID articleId, @Valid @RequestBody UpdateArticleRequest request) {
         List<String> tags = request.tags() == null ? request.keywords() : request.tags();
+        if (request.titleEn() == null && request.summaryEn() == null && request.markdownEn() == null) {
+            return ArticleResponse.from(publishing.updateArticle(actors.currentActor(), articleId,
+                    request.expectedVersion(), request.title(), request.summary(), request.markdown(), tags,
+                    request.keywords()));
+        }
+        List<String> tagsEn = request.tagsEn() == null ? request.keywordsEn() : request.tagsEn();
         return ArticleResponse.from(publishing.updateArticle(actors.currentActor(), articleId,
-                request.expectedVersion(), request.title(), request.summary(), request.markdown(), tags, request.keywords()));
+                request.expectedVersion(), request.title(), request.summary(), request.markdown(), tags,
+                request.keywords(), request.titleEn(), request.summaryEn(), request.markdownEn(), tagsEn,
+                request.keywordsEn()));
     }
 
     @PostMapping("/{articleId}/approve")

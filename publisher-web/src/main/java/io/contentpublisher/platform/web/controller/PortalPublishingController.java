@@ -179,14 +179,21 @@ public class PortalPublishingController {
     }
 
     @GetMapping("/articles/{articleId}/manual/{channelType}")
-    public String manualPublish(@PathVariable UUID articleId, @PathVariable ChannelType channelType, Model model) {
+    public String manualPublish(@PathVariable UUID articleId, @PathVariable ChannelType channelType, Model model,
+                                RedirectAttributes redirectAttributes) {
         var actor = actors.currentActor();
         var article = publishing.getArticle(actor, articleId);
         var definition = ChannelCatalog.definition(channelType);
         if (!definition.manualAvailable()) {
             throw new ApplicationException("MANUAL_PUBLISH_UNAVAILABLE", "该渠道尚未配置人工发布入口");
         }
-        var adapted = publishing.adaptContent(actor, articleId, channelType, null);
+        io.contentpublisher.platform.domain.AdaptedContent adapted;
+        try {
+            adapted = publishing.adaptContent(actor, articleId, channelType, null);
+        } catch (ApplicationException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+            return "redirect:/articles/" + articleId;
+        }
         if (!model.containsAttribute("manualPublicationForm")) {
             ManualPublicationForm form = new ManualPublicationForm();
             form.setContentFormat(adapted.format());
@@ -208,7 +215,7 @@ public class PortalPublishingController {
                                         BindingResult bindingResult, Model model,
                                         RedirectAttributes redirectAttributes) {
         if (bindingResult.hasErrors()) {
-            return manualPublish(articleId, channelType, model);
+            return manualPublish(articleId, channelType, model, redirectAttributes);
         }
         try {
             publishing.completeManualPublication(actors.currentActor(), articleId, channelType, form.getTitle(),
@@ -217,7 +224,7 @@ public class PortalPublishingController {
             return "redirect:/articles/" + articleId;
         } catch (ApplicationException | IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
-            return manualPublish(articleId, channelType, model);
+            return manualPublish(articleId, channelType, model, redirectAttributes);
         }
     }
 

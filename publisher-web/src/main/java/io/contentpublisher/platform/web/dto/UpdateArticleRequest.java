@@ -12,5 +12,10 @@ public record UpdateArticleRequest(
         @NotBlank @Size(max = 2000) String summary,
         @NotBlank @Size(max = 20000) String markdown,
         @Size(max = 15) List<@Size(max = 50) String> tags,
-        @Size(max = 30) List<@Size(max = 100) String> keywords) {
+        @Size(max = 30) List<@Size(max = 100) String> keywords,
+        @Size(max = 500) String titleEn,
+        @Size(max = 2000) String summaryEn,
+        @Size(max = 20000) String markdownEn,
+        @Size(max = 15) List<@Size(max = 50) String> tagsEn,
+        @Size(max = 30) List<@Size(max = 100) String> keywordsEn) {
 }

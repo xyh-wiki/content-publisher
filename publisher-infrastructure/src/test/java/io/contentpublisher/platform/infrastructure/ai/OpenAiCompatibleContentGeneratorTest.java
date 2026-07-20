@@ -47,6 +47,27 @@ class OpenAiCompatibleContentGeneratorTest {
         assertThat(result.tags()).containsExactly("Java", "内容生成");
         assertThat(result.keywords()).containsExactly("Git", "Java 教程");
         assertThat(result.markdown()).contains("## 项目概览", "Git");
+        assertThat(result.titleEn()).isEqualTo("Git Project Analysis Platform");
+        assertThat(result.markdownEn()).contains("## Overview");
+    }
+
+    @Test
+    void shouldRejectResponseMissingEnglishContent() throws Exception {
+        String markdown = "## 项目概览\nGit 自动分析平台。" + "这是经过仓库事实校验的技术说明。".repeat(20);
+        ObjectMapper mapper = new ObjectMapper();
+        String content = mapper.writeValueAsString(java.util.Map.of(
+                "title", "Git 项目分析平台", "summary", "依据仓库事实生成文章。", "markdown", markdown,
+                "keywords", List.of("Git")));
+        String response = mapper.writeValueAsString(java.util.Map.of("choices", List.of(
+                java.util.Map.of("message", java.util.Map.of("content", content)))));
+        OpenAiCompatibleContentGenerator generator = generator(response);
+        GenerationPolicy policy = new GenerationPolicy("zh-CN", "专业", 200, 2000, 2,
+                List.of("Git"), List.of(), List.of("项目概览"));
+
+        assertThatThrownBy(() -> generator.generate("tenant-test", snapshot(), policy))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(exception -> ((ApplicationException) exception).code())
+                .isEqualTo("AI_OUTPUT_REJECTED");
     }
 
     @Test
@@ -126,25 +147,40 @@ class OpenAiCompatibleContentGeneratorTest {
 
     private String aiEnvelope(String markdown, List<String> keywords) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        String content = mapper.writeValueAsString(java.util.Map.of(
-                "title", "Git 项目分析平台",
-                "summary", "依据仓库事实生成文章。",
-                "markdown", markdown,
-                "keywords", keywords));
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("title", "Git 项目分析平台");
+        payload.put("summary", "依据仓库事实生成文章。");
+        payload.put("markdown", markdown);
+        payload.put("keywords", keywords);
+        payload.put("titleEn", "Git Project Analysis Platform");
+        payload.put("summaryEn", "Generated from verified repository facts.");
+        payload.put("markdownEn", englishMarkdown());
+        payload.put("keywordsEn", keywords);
+        String content = mapper.writeValueAsString(payload);
         return mapper.writeValueAsString(java.util.Map.of("choices", List.of(
                 java.util.Map.of("message", java.util.Map.of("content", content)))));
     }
 
     private String aiEnvelope(String markdown, List<String> tags, List<String> keywords) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        String content = mapper.writeValueAsString(java.util.Map.of(
-                "title", "Git 项目分析平台",
-                "summary", "依据仓库事实生成文章。",
-                "markdown", markdown,
-                "tags", tags,
-                "keywords", keywords));
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("title", "Git 项目分析平台");
+        payload.put("summary", "依据仓库事实生成文章。");
+        payload.put("markdown", markdown);
+        payload.put("tags", tags);
+        payload.put("keywords", keywords);
+        payload.put("titleEn", "Git Project Analysis Platform");
+        payload.put("summaryEn", "Generated from verified repository facts.");
+        payload.put("markdownEn", englishMarkdown());
+        payload.put("tagsEn", tags);
+        payload.put("keywordsEn", keywords);
+        String content = mapper.writeValueAsString(payload);
         return mapper.writeValueAsString(java.util.Map.of("choices", List.of(
                 java.util.Map.of("message", java.util.Map.of("content", content)))));
+    }
+
+    private String englishMarkdown() {
+        return "## Overview\nAutomated repository analysis platform. " + "Verified technical documentation.".repeat(20);
     }
 
     private RepositorySnapshot snapshot() {

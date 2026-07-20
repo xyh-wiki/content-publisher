@@ -73,8 +73,9 @@ class DevChannelPublisherTest {
 
     private Article article() {
         Instant now = Instant.parse("2026-07-20T00:00:00Z");
-        return new Article(UUID.randomUUID(), "tenant", UUID.randomUUID(), UUID.randomUUID(),
-                "企业内容平台", "摘要", "## 核心能力\n\n正文", List.of("Java", "内容分发"), "zh-CN",
-                "a".repeat(40), 1, ArticleStatus.APPROVED, "editor", "admin", now, now);
+        return new Article(UUID.randomUUID(), "tenant", io.contentpublisher.platform.domain.ContentOrigin.git(UUID.randomUUID()),
+                UUID.randomUUID(), "企业内容平台", "摘要", "## 核心能力\n\n正文", List.of("Java", "内容分发"), List.of("Java", "内容分发"),
+                "企业内容平台", "摘要", "## 核心能力\n\n正文", List.of("Java", "内容分发"), List.of("Java", "内容分发"),
+                "zh-CN", "a".repeat(40), 1, ArticleStatus.APPROVED, "editor", "admin", now, now);
     }
 }

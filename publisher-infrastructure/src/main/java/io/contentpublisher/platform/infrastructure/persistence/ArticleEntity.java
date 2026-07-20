@@ -28,6 +28,11 @@ class ArticleEntity {
     @Column(nullable = false, columnDefinition = "text") String markdown;
     @Column(name = "tags_json", nullable = false, columnDefinition = "text") String tagsJson;
     @Column(name = "keywords_json", nullable = false, columnDefinition = "text") String keywordsJson;
+    @Column(name = "title_en", nullable = false, length = 500) String titleEn;
+    @Column(name = "summary_en", nullable = false, length = 2000) String summaryEn;
+    @Column(name = "markdown_en", nullable = false, columnDefinition = "text") String markdownEn;
+    @Column(name = "tags_en_json", nullable = false, columnDefinition = "text") String tagsEnJson;
+    @Column(name = "keywords_en_json", nullable = false, columnDefinition = "text") String keywordsEnJson;
     @Column(nullable = false, length = 20) String language;
     @Column(name = "source_revision", nullable = false, length = 64) String sourceRevision;
     @Column(name = "current_version", nullable = false) int currentVersion;

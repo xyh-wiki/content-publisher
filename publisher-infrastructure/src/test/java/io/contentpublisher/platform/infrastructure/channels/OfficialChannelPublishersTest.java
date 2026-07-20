@@ -149,10 +149,13 @@ class OfficialChannelPublishersTest {
 
     private ChannelPublisher.PublishContent content(ChannelType channelType) {
         Instant now = Instant.parse("2026-07-20T00:00:00Z");
-        Article article = new Article(UUID.randomUUID(), "tenant", UUID.randomUUID(), UUID.randomUUID(),
-                "Enterprise Content Platform", "Technical summary", "# Body\n\n<script>alert(1)</script>",
-                List.of("Java"), "en", "a".repeat(40), 1, ArticleStatus.APPROVED,
-                "editor", "admin", now, now);
+        String title = "Enterprise Content Platform";
+        String summary = "Technical summary";
+        String markdown = "# Body\n\n<script>alert(1)</script>";
+        Article article = new Article(UUID.randomUUID(), "tenant", io.contentpublisher.platform.domain.ContentOrigin.git(UUID.randomUUID()),
+                UUID.randomUUID(), title, summary, markdown, List.of("Java"), List.of("Java"),
+                title, summary, markdown, List.of("Java"), List.of("Java"),
+                "en", "a".repeat(40), 1, ArticleStatus.APPROVED, "editor", "admin", now, now);
         String canonicalUrl = "https://example.com/article";
         return new ChannelPublisher.PublishContent(article,
                 new PlatformContentAdapter().adapt(article, channelType, canonicalUrl), canonicalUrl);
@@ -160,9 +163,10 @@ class OfficialChannelPublishersTest {
 
     private Article article(String title, String summary) {
         Instant now = Instant.parse("2026-07-20T00:00:00Z");
-        return new Article(UUID.randomUUID(), "tenant", UUID.randomUUID(), UUID.randomUUID(), title, summary,
-                "# Body", List.of("Java"), "zh-CN", "a".repeat(40), 1, ArticleStatus.APPROVED,
-                "editor", "admin", now, now);
+        return new Article(UUID.randomUUID(), "tenant", io.contentpublisher.platform.domain.ContentOrigin.git(UUID.randomUUID()),
+                UUID.randomUUID(), title, summary, "# Body", List.of("Java"), List.of("Java"),
+                title, summary, "# Body", List.of("Java"), List.of("Java"),
+                "zh-CN", "a".repeat(40), 1, ArticleStatus.APPROVED, "editor", "admin", now, now);
     }
 
     private ChannelProperties properties() {

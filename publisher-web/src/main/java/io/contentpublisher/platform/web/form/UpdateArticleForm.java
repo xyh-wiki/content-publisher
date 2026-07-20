@@ -26,6 +26,21 @@ public class UpdateArticleForm {
     @Size(max = 1000, message = "标签内容过长")
     private String tags;
 
+    @Size(max = 500, message = "英文标题不能超过 500 个字符")
+    private String titleEn;
+
+    @Size(max = 2000, message = "英文摘要不能超过 2000 个字符")
+    private String summaryEn;
+
+    @Size(max = 20000, message = "英文正文不能超过 20000 个字符")
+    private String markdownEn;
+
+    @Size(max = 3200, message = "英文关键词内容过长")
+    private String keywordsEn;
+
+    @Size(max = 1000, message = "英文标签内容过长")
+    private String tagsEn;
+
     public int getExpectedVersion() { return expectedVersion; }
     public void setExpectedVersion(int expectedVersion) { this.expectedVersion = expectedVersion; }
     public String getTitle() { return title; }
@@ -38,4 +53,14 @@ public class UpdateArticleForm {
     public void setKeywords(String keywords) { this.keywords = keywords; }
     public String getTags() { return tags; }
     public void setTags(String tags) { this.tags = tags; }
+    public String getTitleEn() { return titleEn; }
+    public void setTitleEn(String titleEn) { this.titleEn = titleEn; }
+    public String getSummaryEn() { return summaryEn; }
+    public void setSummaryEn(String summaryEn) { this.summaryEn = summaryEn; }
+    public String getMarkdownEn() { return markdownEn; }
+    public void setMarkdownEn(String markdownEn) { this.markdownEn = markdownEn; }
+    public String getKeywordsEn() { return keywordsEn; }
+    public void setKeywordsEn(String keywordsEn) { this.keywordsEn = keywordsEn; }
+    public String getTagsEn() { return tagsEn; }
+    public void setTagsEn(String tagsEn) { this.tagsEn = tagsEn; }
 }

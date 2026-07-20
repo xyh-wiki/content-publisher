@@ -1,5 +1,6 @@
 package io.contentpublisher.platform.application;
 
+import io.contentpublisher.platform.application.ChannelCatalog.ChannelRegion;
 import io.contentpublisher.platform.domain.AdaptedContent;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ChannelType;
@@ -11,47 +12,63 @@ import java.util.Locale;
 public final class PlatformContentAdapter {
     public AdaptedContent adapt(Article article, ChannelType channelType, String canonicalUrl) {
         ChannelCatalog.ChannelDefinition definition = ChannelCatalog.definition(channelType);
-        List<String> sourceTags = article.tags().isEmpty() ? article.keywords() : article.tags();
+        Localized content = localize(article, definition.region());
+        List<String> sourceTags = content.tags().isEmpty() ? content.keywords() : content.tags();
         List<String> tags = sourceTags.stream().map(this::normalizeTag)
                 .filter(value -> !value.isBlank()).distinct().limit(tagLimit(channelType)).toList();
         String body = switch (definition.contentFormat()) {
-            case MARKDOWN -> markdown(article, channelType, canonicalUrl);
-            case PLAIN_TEXT -> plainText(article, channelType, canonicalUrl, tags);
-            case SHORT_TEXT -> shortText(article, channelType, canonicalUrl, tags, definition.characterLimit());
+            case MARKDOWN -> markdown(content, channelType, canonicalUrl, definition.region());
+            case PLAIN_TEXT -> plainText(content, channelType, canonicalUrl, tags, definition.region());
+            case SHORT_TEXT -> shortText(content, channelType, canonicalUrl, tags, definition.characterLimit());
         };
-        return new AdaptedContent(channelType, definition.contentFormat(), adaptTitle(article.title(), channelType),
+        return new AdaptedContent(channelType, definition.contentFormat(), adaptTitle(content.title(), channelType),
                 truncate(body, definition.characterLimit()), tags, definition.characterLimit());
     }
 
-    private String markdown(Article article, ChannelType channelType, String canonicalUrl) {
-        String markdown = article.markdown();
+    private Localized localize(Article article, ChannelRegion region) {
+        if (region == ChannelRegion.OVERSEAS) {
+            if (!article.hasEnglishContent()) {
+                throw new ApplicationException("ARTICLE_TRANSLATION_MISSING",
+                        "文章暂无英文版本，无法发布到国外渠道，请先编辑文章补充英文标题、摘要和正文");
+            }
+            return new Localized(article.titleEn(), article.summaryEn(), article.markdownEn(),
+                    article.tagsEn(), article.keywordsEn());
+        }
+        return new Localized(article.title(), article.summary(), article.markdown(), article.tags(), article.keywords());
+    }
+
+    private String markdown(Localized content, ChannelType channelType, String canonicalUrl, ChannelRegion region) {
+        String markdown = content.markdown();
         if (channelType == ChannelType.V2EX) {
-            markdown = "## " + article.title() + "\n\n" + article.summary() + "\n\n" + markdown;
+            markdown = "## " + content.title() + "\n\n" + content.summary() + "\n\n" + markdown;
         }
         if (channelType == ChannelType.DEV || channelType == ChannelType.HASHNODE
                 || channelType == ChannelType.MEDIUM || channelType == ChannelType.GHOST) {
             return markdown;
         }
-        return appendLink(markdown, canonicalUrl, "原文链接");
+        return appendLink(markdown, canonicalUrl, region == ChannelRegion.OVERSEAS ? "Source: " : "原文链接：");
     }
 
-    private String plainText(Article article, ChannelType channelType, String canonicalUrl, List<String> tags) {
-        String plain = stripMarkdown(article.markdown());
-        StringBuilder content = new StringBuilder();
+    private String plainText(Localized content, ChannelType channelType, String canonicalUrl, List<String> tags,
+                             ChannelRegion region) {
+        String plain = stripMarkdown(content.markdown());
+        StringBuilder body = new StringBuilder();
         if (channelType == ChannelType.XIAOHONGSHU) {
-            content.append(article.summary()).append("\n\n").append(plain);
+            body.append(content.summary()).append("\n\n").append(plain);
         } else {
-            content.append(plain);
+            body.append(plain);
         }
-        if (canonicalUrl != null) content.append("\n\n原文链接：").append(canonicalUrl);
+        if (canonicalUrl != null) {
+            body.append("\n\n").append(region == ChannelRegion.OVERSEAS ? "Source: " : "原文链接：").append(canonicalUrl);
+        }
         if (!tags.isEmpty()) {
-            content.append("\n\n");
-            tags.forEach(tag -> content.append('#').append(tag).append(' '));
+            body.append("\n\n");
+            tags.forEach(tag -> body.append('#').append(tag).append(' '));
         }
-        return content.toString().strip();
+        return body.toString().strip();
     }
 
-    private String shortText(Article article, ChannelType channelType, String canonicalUrl, List<String> tags,
+    private String shortText(Localized content, ChannelType channelType, String canonicalUrl, List<String> tags,
                              int limit) {
         StringBuilder suffix = new StringBuilder();
         if (canonicalUrl != null) suffix.append("\n\n").append(canonicalUrl);
@@ -60,7 +77,7 @@ public final class PlatformContentAdapter {
             int allowedTags = channelType == ChannelType.X ? 2 : 3;
             tags.stream().limit(allowedTags).forEach(tag -> suffix.append('#').append(tag).append(' '));
         }
-        String lead = article.title() + "\n\n" + article.summary();
+        String lead = content.title() + "\n\n" + content.summary();
         int available = Math.max(20, limit - codePoints(suffix.toString()));
         return truncate(lead, available) + suffix.toString().stripTrailing();
     }
@@ -78,8 +95,8 @@ public final class PlatformContentAdapter {
         };
     }
 
-    private String appendLink(String content, String canonicalUrl, String label) {
-        return canonicalUrl == null ? content : content + "\n\n" + label + "：" + canonicalUrl;
+    private String appendLink(String content, String canonicalUrl, String labelWithSeparator) {
+        return canonicalUrl == null ? content : content + "\n\n" + labelWithSeparator + canonicalUrl;
     }
 
     private String stripMarkdown(String markdown) {
@@ -119,5 +136,8 @@ public final class PlatformContentAdapter {
 
     private int codePoints(String value) {
         return value.codePointCount(0, value.length());
+    }
+
+    private record Localized(String title, String summary, String markdown, List<String> tags, List<String> keywords) {
     }
 }

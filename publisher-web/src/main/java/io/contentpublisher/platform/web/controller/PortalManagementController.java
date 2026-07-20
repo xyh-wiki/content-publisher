@@ -214,6 +214,10 @@ public class PortalManagementController {
                 new java.util.EnumMap<>(io.contentpublisher.platform.domain.ChannelType.class);
         ChannelCatalog.all().forEach(channel -> channelNames.put(channel.type(), channel.displayName()));
         model.addAttribute("channelNames", channelNames);
+        java.util.Map<io.contentpublisher.platform.domain.ChannelType, ChannelCatalog.ChannelRegion> channelRegions =
+                new java.util.EnumMap<>(io.contentpublisher.platform.domain.ChannelType.class);
+        ChannelCatalog.all().forEach(channel -> channelRegions.put(channel.type(), channel.region()));
+        model.addAttribute("channelRegions", channelRegions);
         model.addAttribute("editable", article.status() == ArticleStatus.DRAFT
                 || article.status() == ArticleStatus.REJECTED);
         return "article-detail";
@@ -229,7 +233,9 @@ public class PortalManagementController {
         }
         try {
             publishing.updateArticle(actors.currentActor(), articleId, form.getExpectedVersion(), form.getTitle(),
-                    form.getSummary(), form.getMarkdown(), splitValues(form.getTags()), splitValues(form.getKeywords()));
+                    form.getSummary(), form.getMarkdown(), splitValues(form.getTags()), splitValues(form.getKeywords()),
+                    form.getTitleEn(), form.getSummaryEn(), form.getMarkdownEn(), splitValues(form.getTagsEn()),
+                    splitValues(form.getKeywordsEn()));
             redirectAttributes.addFlashAttribute("success", "文章已保存为新版本");
         } catch (ApplicationException | IllegalArgumentException exception) {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
@@ -310,6 +316,11 @@ public class PortalManagementController {
         form.setMarkdown(article.markdown());
         form.setTags(String.join("\n", article.tags()));
         form.setKeywords(String.join("\n", article.keywords()));
+        form.setTitleEn(article.titleEn());
+        form.setSummaryEn(article.summaryEn());
+        form.setMarkdownEn(article.markdownEn());
+        form.setTagsEn(String.join("\n", article.tagsEn()));
+        form.setKeywordsEn(String.join("\n", article.keywordsEn()));
         return form;
     }
 

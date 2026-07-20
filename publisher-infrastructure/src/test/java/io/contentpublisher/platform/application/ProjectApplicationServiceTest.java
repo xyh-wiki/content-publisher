@@ -52,6 +52,9 @@ class ProjectApplicationServiceTest {
         Article article = fixture.service.generateArticle(ACTOR, projectId, POLICY);
 
         assertThat(article.markdown()).contains("## 推荐地址", "项目仓库：<" + repositoryUrl + ">");
+        assertThat(article.markdownEn()).contains("## Recommended Link", "Project Repository：<" + repositoryUrl + ">");
+        assertThat(article.titleEn()).isEqualTo("Title");
+        assertThat(article.hasEnglishContent()).isTrue();
     }
 
     @Test
@@ -85,7 +88,8 @@ class ProjectApplicationServiceTest {
     }
 
     private ContentGenerator.GeneratedContent generated(String markdown) {
-        return new ContentGenerator.GeneratedContent("标题", "摘要", markdown, List.of("工具"), List.of("工具推荐"));
+        return new ContentGenerator.GeneratedContent("标题", "摘要", markdown, List.of("工具"), List.of("工具推荐"),
+                "Title", "Summary", "## Introduction\n\nBody", List.of("tools"), List.of("tool recommendation"));
     }
 
     private Fixture fixture() {

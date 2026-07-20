@@ -1,5 +1,6 @@
 package io.contentpublisher.platform.infrastructure.channels;
 
+import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.application.PlatformContentAdapter;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleStatus;
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PlatformContentAdapterTest {
     private final PlatformContentAdapter adapter = new PlatformContentAdapter();
@@ -36,7 +38,8 @@ class PlatformContentAdapterTest {
 
     @Test
     void shouldRespectTwitterUnicodeLimit() {
-        Article source = article("技术平台".repeat(100), "能力摘要".repeat(100));
+        Article source = article("技术平台".repeat(100), "能力摘要".repeat(100),
+                "Tech Platform ".repeat(100), "Capability summary ".repeat(100));
 
         var content = adapter.adapt(source, ChannelType.X, "https://example.com/source");
 
@@ -45,15 +48,43 @@ class PlatformContentAdapterTest {
         assertThat(content.body()).contains("https://example.com/source");
     }
 
-    private Article article() {
-        return article("企业级内容发布平台", "面向开发团队的多平台内容分发能力");
+    @Test
+    void shouldUseEnglishContentAndSourceLabelForOverseasChannels() {
+        var content = adapter.adapt(article(), ChannelType.DEV, "https://example.com/source");
+
+        assertThat(content.title()).isEqualTo("Enterprise Content Platform");
+        assertThat(content.body()).contains("## Core Capabilities").doesNotContain("核心能力");
     }
 
-    private Article article(String title, String summary) {
+    @Test
+    void shouldUseChineseSourceLabelForDomesticChannels() {
+        var content = adapter.adapt(article(), ChannelType.CSDN, "https://example.com/source");
+
+        assertThat(content.body()).contains("原文链接：https://example.com/source").doesNotContain("Source:");
+    }
+
+    @Test
+    void shouldRejectOverseasPublishingWithoutEnglishContent() {
+        Article withoutEnglish = article("企业级内容发布平台", "面向开发团队的多平台内容分发能力", "", "");
+
+        assertThatThrownBy(() -> adapter.adapt(withoutEnglish, ChannelType.MEDIUM, "https://example.com/source"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("英文");
+    }
+
+    private Article article() {
+        return article("企业级内容发布平台", "面向开发团队的多平台内容分发能力",
+                "Enterprise Content Platform", "Multi-platform content distribution for engineering teams");
+    }
+
+    private Article article(String title, String summary, String titleEn, String summaryEn) {
         Instant now = Instant.parse("2026-07-20T00:00:00Z");
+        String markdownEn = titleEn.isEmpty() ? "" : "## Core Capabilities\n\nSupports **Markdown** and [project link](https://example.com).";
         return new Article(UUID.randomUUID(), "tenant", ContentOrigin.git(UUID.randomUUID()), UUID.randomUUID(), title, summary,
                 "## 核心能力\n\n支持 **Markdown** 与 [项目地址](https://example.com)。",
                 List.of("Java", "内容分发"), List.of("Java 内容分发教程", "多平台发布方案"),
+                titleEn, summaryEn, markdownEn, List.of("Java", "content-distribution"),
+                List.of("Java content distribution tutorial", "multi-platform publishing"),
                 "zh-CN", "a".repeat(40), 1, ArticleStatus.APPROVED,
                 "editor", "admin", now, now);
     }

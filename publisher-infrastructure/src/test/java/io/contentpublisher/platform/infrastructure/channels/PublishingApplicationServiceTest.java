@@ -188,9 +188,10 @@ class PublishingApplicationServiceTest {
     }
 
     private Article article(ArticleStatus status) {
-        return new Article(UUID.randomUUID(), "tenant", UUID.randomUUID(), UUID.randomUUID(), "Title", "Summary",
-                "## Body", List.of("Java"), "zh-CN", "a".repeat(40), 1, status,
-                "editor", "admin", NOW, NOW);
+        return new Article(UUID.randomUUID(), "tenant", io.contentpublisher.platform.domain.ContentOrigin.git(UUID.randomUUID()),
+                UUID.randomUUID(), "Title", "Summary", "## Body", List.of("Java"), List.of("Java"),
+                "Title", "Summary", "## Body", List.of("Java"), List.of("Java"),
+                "zh-CN", "a".repeat(40), 1, status, "editor", "admin", NOW, NOW);
     }
 
     private ChannelAccount account() {

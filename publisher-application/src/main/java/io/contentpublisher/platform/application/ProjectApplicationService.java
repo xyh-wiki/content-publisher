@@ -135,13 +135,15 @@ public final class ProjectApplicationService {
         ContentGenerator.GeneratedContent generated = contentGenerator.generate(actor.tenantId(), snapshot, policy);
         progress.update(82, "整理文章结果", "正文生成完成，正在补充来源链接并保存文章版本");
         String markdown = ensureSourceLink(generated.markdown(), project.gitUrl(), "推荐地址", "项目仓库");
+        String markdownEn = ensureSourceLink(generated.markdownEn(), project.gitUrl(), "Recommended Link", "Project Repository");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.git(projectId), generationJobId,
-                generated.title(), generated.summary(),
-                markdown, generated.tags(), generated.keywords(), policy.language(), snapshot.revision(),
-                1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
+                generated.title(), generated.summary(), markdown, generated.tags(), generated.keywords(),
+                generated.titleEn(), generated.summaryEn(), markdownEn, generated.tagsEn(), generated.keywordsEn(),
+                policy.language(), snapshot.revision(), 1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
         Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
                 article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
+                article.titleEn(), article.summaryEn(), article.markdownEn(), article.tagsEn(), article.keywordsEn(),
                 actor.subject(), now));
         auditRecorder.record(actor, "ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("projectId", projectId.toString(), "sourceRevision", snapshot.revision(),
@@ -170,10 +172,12 @@ public final class ProjectApplicationService {
         progress.update(82, "保存主题文章", "正文生成完成，正在保存文章主稿和首个版本");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.topic(brief), generationJobId,
-                generated.title(), generated.summary(), generated.markdown(), generated.tags(), generated.keywords(), policy.language(),
-                topicRevision(brief), 1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
+                generated.title(), generated.summary(), generated.markdown(), generated.tags(), generated.keywords(),
+                generated.titleEn(), generated.summaryEn(), generated.markdownEn(), generated.tagsEn(), generated.keywordsEn(),
+                policy.language(), topicRevision(brief), 1, ArticleStatus.DRAFT, actor.subject(), actor.subject(), now, now);
         Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
                 article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
+                article.titleEn(), article.summaryEn(), article.markdownEn(), article.tagsEn(), article.keywordsEn(),
                 actor.subject(), now));
         auditRecorder.record(actor, "TOPIC_ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("topic", brief.topic(), "articleType", brief.articleType(),
@@ -204,14 +208,16 @@ public final class ProjectApplicationService {
                 actor.tenantId(), brief, snapshot, policy);
         progress.update(84, "保存网站文章", "正文生成完成，正在补充官方网站链接并保存版本");
         String markdown = ensureSourceLink(generated.markdown(), snapshot.url(), "推荐网站", "官方网站");
+        String markdownEn = ensureSourceLink(generated.markdownEn(), snapshot.url(), "Recommended Website", "Official Website");
         Instant now = clock.instant();
         Article article = new Article(UUID.randomUUID(), actor.tenantId(), ContentOrigin.website(brief, snapshot),
                 generationJobId, generated.title(), generated.summary(), markdown, generated.tags(),
-                generated.keywords(), policy.language(), websiteRevision(snapshot), 1, ArticleStatus.DRAFT,
-                actor.subject(), actor.subject(),
-                now, now);
+                generated.keywords(), generated.titleEn(), generated.summaryEn(), markdownEn, generated.tagsEn(),
+                generated.keywordsEn(), policy.language(), websiteRevision(snapshot), 1, ArticleStatus.DRAFT,
+                actor.subject(), actor.subject(), now, now);
         Article saved = articles.saveWithVersion(article, new ArticleVersion(actor.tenantId(), article.id(), 1,
                 article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
+                article.titleEn(), article.summaryEn(), article.markdownEn(), article.tagsEn(), article.keywordsEn(),
                 actor.subject(), now));
         auditRecorder.record(actor, "WEBSITE_ARTICLE_GENERATED", "ARTICLE", saved.id(),
                 Map.of("websiteHost", java.net.URI.create(snapshot.url()).getHost(), "language", policy.language()));
