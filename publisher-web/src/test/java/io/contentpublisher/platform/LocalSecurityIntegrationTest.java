@@ -83,6 +83,12 @@ class LocalSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("全链路监控大屏")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-screen")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-gauge")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-column")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-tabs")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-tab-group=\"state\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-tab-group=\"feed\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("role=\"tabpanel\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("发布成功率")));
         mockMvc.perform(get("/monitoring?range=7d").session(session))
                 .andExpect(status().isOk())
@@ -91,6 +97,7 @@ class LocalSecurityIntegrationTest {
         mockMvc.perform(get("/monitoring/live?range=7d").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-monitor-live-region")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("monitor-gauge-value")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("渠道发布表现")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("<!doctype html>"))));

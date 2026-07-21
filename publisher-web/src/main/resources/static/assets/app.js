@@ -289,8 +289,109 @@
         const countdown = monitorScreen.querySelector('[data-monitor-countdown]');
         const refreshState = monitorScreen.querySelector('[data-monitor-refresh-state]');
         const refreshSeconds = Number(monitorScreen.dataset.refreshSeconds || 60);
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const chartNumberFormat = new Intl.NumberFormat('zh-CN');
         let remaining = refreshSeconds;
         let refreshing = false;
+        const readChartValue = element => {
+            const value = Number(element.dataset.chartValue || 0);
+            return Number.isFinite(value) ? Math.max(0, value) : 0;
+        };
+        const renderChartNumber = element => {
+            const target = readChartValue(element);
+            const suffix = element.dataset.chartSuffix || '';
+            const format = value => `${chartNumberFormat.format(Math.round(value))}${suffix}`;
+            if (reducedMotion.matches) {
+                element.textContent = format(target);
+                return;
+            }
+            const startedAt = performance.now();
+            const duration = 720;
+            element.textContent = format(0);
+            const step = now => {
+                const progress = Math.min(1, (now - startedAt) / duration);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                element.textContent = format(target * eased);
+                if (progress < 1) window.requestAnimationFrame(step);
+            };
+            window.requestAnimationFrame(step);
+        };
+        const renderMonitorCharts = region => {
+            if (!region) return;
+            region.querySelectorAll('[data-monitor-gauge]').forEach(gauge => {
+                const value = Math.min(100, readChartValue(gauge));
+                const gaugeValue = gauge.querySelector('.monitor-gauge-value');
+                if (!gaugeValue) return;
+                gaugeValue.style.strokeDasharray = reducedMotion.matches ? `${value} 100` : '0 100';
+                if (!reducedMotion.matches) window.requestAnimationFrame(() => {
+                    window.requestAnimationFrame(() => { gaugeValue.style.strokeDasharray = `${value} 100`; });
+                });
+            });
+            const columns = [...region.querySelectorAll('[data-monitor-column]')];
+            const columnMax = Math.max(1, ...columns.map(readChartValue));
+            columns.forEach(column => {
+                const value = readChartValue(column);
+                const columnFill = column.querySelector('.monitor-column-track i');
+                if (!columnFill) return;
+                const height = value === 0 ? 0 : Math.max(4, Math.min(100, value / columnMax * 100));
+                columnFill.style.height = reducedMotion.matches ? `${height}%` : '0%';
+                if (!reducedMotion.matches) window.requestAnimationFrame(() => {
+                    window.requestAnimationFrame(() => { columnFill.style.height = `${height}%`; });
+                });
+            });
+            region.querySelectorAll('[data-chart-number]').forEach(renderChartNumber);
+        };
+        const readMonitorTabSelection = region => {
+            const selection = new Map();
+            if (!region) return selection;
+            region.querySelectorAll('[data-monitor-tabs]').forEach(group => {
+                const groupName = group.dataset.monitorTabGroup;
+                const selectedTab = group.querySelector('[data-monitor-tab][aria-selected="true"]');
+                if (groupName && selectedTab) selection.set(groupName, selectedTab.dataset.monitorTab);
+            });
+            return selection;
+        };
+        const initializeMonitorTabs = (region, preferredSelection = new Map()) => {
+            if (!region) return;
+            region.querySelectorAll('[data-monitor-tabs]').forEach(group => {
+                const tabs = [...group.querySelectorAll('[data-monitor-tab]')];
+                const panels = [...group.querySelectorAll('[data-monitor-tab-panel]')];
+                if (!tabs.length || !panels.length) return;
+                const requestedTab = preferredSelection.get(group.dataset.monitorTabGroup);
+                const initialTab = tabs.find(tab => tab.dataset.monitorTab === requestedTab)
+                    || tabs.find(tab => tab.getAttribute('aria-selected') === 'true')
+                    || tabs[0];
+                const activateTab = (tab, moveFocus = false) => {
+                    tabs.forEach(item => {
+                        const selected = item === tab;
+                        item.setAttribute('aria-selected', String(selected));
+                        item.tabIndex = selected ? 0 : -1;
+                    });
+                    panels.forEach(panel => {
+                        panel.hidden = panel.dataset.monitorTabPanel !== tab.dataset.monitorTab;
+                    });
+                    if (moveFocus) tab.focus();
+                };
+                activateTab(initialTab);
+                tabs.forEach((tab, index) => {
+                    tab.addEventListener('click', () => activateTab(tab));
+                    tab.addEventListener('keydown', event => {
+                        let nextIndex;
+                        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = (index + 1) % tabs.length;
+                        else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = (index - 1 + tabs.length) % tabs.length;
+                        else if (event.key === 'Home') nextIndex = 0;
+                        else if (event.key === 'End') nextIndex = tabs.length - 1;
+                        else return;
+                        event.preventDefault();
+                        activateTab(tabs[nextIndex], true);
+                    });
+                });
+            });
+        };
+        const renderMonitorRegion = (region, preferredSelection) => {
+            initializeMonitorTabs(region, preferredSelection);
+            renderMonitorCharts(region);
+        };
         const refreshMonitor = async () => {
             if (refreshing) return;
             refreshing = true;
@@ -310,7 +411,9 @@
                 const nextRegion = documentFragment.querySelector('[data-monitor-live-region]');
                 const currentRegion = monitorScreen.querySelector('[data-monitor-live-region]');
                 if (!nextRegion || !currentRegion) throw new Error('刷新内容不完整');
+                const selectedTabs = readMonitorTabSelection(currentRegion);
                 currentRegion.replaceWith(nextRegion);
+                renderMonitorRegion(nextRegion, selectedTabs);
                 remaining = refreshSeconds;
                 monitorScreen.classList.add('monitor-refresh-ok');
                 if (refreshState) refreshState.textContent = '刚刚更新';
@@ -340,6 +443,7 @@
                 // Browsers may deny fullscreen when the page is embedded.
             }
         });
+        renderMonitorRegion(monitorScreen.querySelector('[data-monitor-live-region]'));
     }
 
     if (body.classList.contains('app-page') && !document.querySelector('[data-support-bot]')) {

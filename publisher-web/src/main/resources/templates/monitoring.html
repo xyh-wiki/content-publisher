@@ -33,85 +33,87 @@
 
             <div class="monitor-live-region" data-monitor-live-region th:fragment="liveData">
             <section class="monitor-status-strip" aria-label="系统运行状态">
-                <div class="monitor-live"><span class="monitor-live-dot"></span><strong>服务在线</strong><small>页面与数据聚合正常</small></div>
-                <div><span>综合状态</span><strong th:class="|tone-${systemStatusTone}|" th:text="${systemStatus}">运行正常</strong><small>任务与发布链路</small></div>
-                <div><span>发布成功率</span><strong th:text="|${publicationSuccessRate}%|">0%</strong><small th:text="|${rangeLabel}已完成记录|">已完成发布记录</small></div>
-                <div><span>任务成功率</span><strong th:text="|${jobSuccessRate}%|">0%</strong><small th:text="|${rangeLabel}已结束任务|">已结束后台任务</small></div>
-                <div><span>渠道在线率</span><strong th:text="|${activeAccountRate}%|">0%</strong><small th:text="|${activeAccountCount} / ${accountCount} 个账号启用|">0 / 0</small></div>
-                <div><span>渠道覆盖</span><strong th:text="|${coveredChannelCount} / ${supportedChannelCount}|">0 / 0</strong><small>已有成功发布的平台</small></div>
+                <div class="monitor-status-summary monitor-live"><span class="monitor-live-dot"></span><span>服务状态</span><strong>服务在线</strong><small>页面与数据聚合正常</small></div>
+                <div class="monitor-status-summary"><span>综合状态</span><strong th:class="|tone-${systemStatusTone}|" th:text="${systemStatus}">运行正常</strong><small>任务与发布链路</small></div>
+                <figure class="monitor-gauge gauge-primary" data-monitor-gauge th:data-chart-value="${publicationSuccessRate}"
+                        role="img" th:attr="aria-label=|发布成功率 ${publicationSuccessRate}%|">
+                    <svg viewBox="0 0 72 72" aria-hidden="true"><circle class="monitor-gauge-track" cx="36" cy="36" r="29" pathLength="100"></circle><circle class="monitor-gauge-value" cx="36" cy="36" r="29" pathLength="100" th:attr="stroke-dasharray=|${publicationSuccessRate} 100|"></circle></svg>
+                    <figcaption><span>发布成功率</span><strong data-chart-number th:data-chart-value="${publicationSuccessRate}" data-chart-suffix="%" th:text="|${publicationSuccessRate}%|">0%</strong><small th:text="|${rangeLabel}已完成记录|">已完成发布记录</small></figcaption>
+                </figure>
+                <figure class="monitor-gauge gauge-success" data-monitor-gauge th:data-chart-value="${jobSuccessRate}"
+                        role="img" th:attr="aria-label=|任务成功率 ${jobSuccessRate}%|">
+                    <svg viewBox="0 0 72 72" aria-hidden="true"><circle class="monitor-gauge-track" cx="36" cy="36" r="29" pathLength="100"></circle><circle class="monitor-gauge-value" cx="36" cy="36" r="29" pathLength="100" th:attr="stroke-dasharray=|${jobSuccessRate} 100|"></circle></svg>
+                    <figcaption><span>任务成功率</span><strong data-chart-number th:data-chart-value="${jobSuccessRate}" data-chart-suffix="%" th:text="|${jobSuccessRate}%|">0%</strong><small th:text="|${rangeLabel}已结束任务|">已结束后台任务</small></figcaption>
+                </figure>
+                <figure class="monitor-gauge gauge-slate" data-monitor-gauge th:data-chart-value="${activeAccountRate}"
+                        role="img" th:attr="aria-label=|渠道在线率 ${activeAccountRate}%|">
+                    <svg viewBox="0 0 72 72" aria-hidden="true"><circle class="monitor-gauge-track" cx="36" cy="36" r="29" pathLength="100"></circle><circle class="monitor-gauge-value" cx="36" cy="36" r="29" pathLength="100" th:attr="stroke-dasharray=|${activeAccountRate} 100|"></circle></svg>
+                    <figcaption><span>渠道在线率</span><strong data-chart-number th:data-chart-value="${activeAccountRate}" data-chart-suffix="%" th:text="|${activeAccountRate}%|">0%</strong><small th:text="|${activeAccountCount} / ${accountCount} 个账号启用|">0 / 0</small></figcaption>
+                </figure>
+                <div class="monitor-status-summary"><span>渠道覆盖</span><strong th:text="|${coveredChannelCount} / ${supportedChannelCount}|">0 / 0</strong><small>已有成功发布的平台</small></div>
             </section>
 
-            <section class="monitor-metric-grid" aria-label="核心指标">
-                <article class="monitor-metric-card metric-project"><span>项目总量</span><strong th:text="${projectCount}">0</strong><small th:text="|${rangeLabel}活动 ${projectActivityCount}|">窗口活动 0</small><i>项目</i></article>
-                <article class="monitor-metric-card metric-content"><span>内容总量</span><strong th:text="${articleCount}">0</strong><small th:text="|${rangeLabel}活动 ${articleActivityCount}|">窗口活动 0</small><i>内容</i></article>
-                <article class="monitor-metric-card metric-jobs"><span>活跃任务</span><strong th:text="${activeJobCount}">0</strong><small th:text="|${rangeLabel}活动 ${jobActivityCount}|">窗口活动 0</small><i>任务</i></article>
-                <article class="monitor-metric-card metric-publish"><span>发布记录</span><strong th:text="${publicationCount}">0</strong><small th:text="|${rangeLabel}活动 ${publicationActivityCount}|">窗口活动 0</small><i>发布</i></article>
+            <section class="monitor-workspace" aria-labelledby="monitor-workspace-title">
+                <header class="monitor-section-header"><div><p class="section-kicker">运行概览</p><h3 id="monitor-workspace-title">活动与状态分布</h3><small th:text="${rangeLabel}">近 24 小时</small></div><span>实时聚合</span></header>
+                <div class="monitor-workspace-grid">
+                    <div class="monitor-activity-area" aria-labelledby="monitor-activity-title">
+                        <div class="monitor-subheading"><div><h4 id="monitor-activity-title">窗口活动量</h4><p>项目、内容、任务与发布活动对比</p></div><span>次数</span></div>
+                        <div class="monitor-activity-chart" data-monitor-columns>
+                            <article class="monitor-activity-column metric-project" data-monitor-column th:data-chart-value="${projectActivityCount}" th:attr="aria-label=|项目活动 ${projectActivityCount} 次，项目总量 ${projectCount}|">
+                                <div class="monitor-column-value"><strong data-chart-number th:data-chart-value="${projectActivityCount}" th:text="${projectActivityCount}">0</strong><span>次</span></div><div class="monitor-column-track" aria-hidden="true"><i></i></div><div class="monitor-column-label"><strong>项目</strong><small th:text="|总量 ${projectCount}|">总量 0</small></div>
+                            </article>
+                            <article class="monitor-activity-column metric-content" data-monitor-column th:data-chart-value="${articleActivityCount}" th:attr="aria-label=|内容活动 ${articleActivityCount} 次，内容总量 ${articleCount}|">
+                                <div class="monitor-column-value"><strong data-chart-number th:data-chart-value="${articleActivityCount}" th:text="${articleActivityCount}">0</strong><span>次</span></div><div class="monitor-column-track" aria-hidden="true"><i></i></div><div class="monitor-column-label"><strong>内容</strong><small th:text="|总量 ${articleCount}|">总量 0</small></div>
+                            </article>
+                            <article class="monitor-activity-column metric-jobs" data-monitor-column th:data-chart-value="${jobActivityCount}" th:attr="aria-label=|任务活动 ${jobActivityCount} 次，活跃任务 ${activeJobCount}|">
+                                <div class="monitor-column-value"><strong data-chart-number th:data-chart-value="${jobActivityCount}" th:text="${jobActivityCount}">0</strong><span>次</span></div><div class="monitor-column-track" aria-hidden="true"><i></i></div><div class="monitor-column-label"><strong>任务</strong><small th:text="|活跃 ${activeJobCount}|">活跃 0</small></div>
+                            </article>
+                            <article class="monitor-activity-column metric-publish" data-monitor-column th:data-chart-value="${publicationActivityCount}" th:attr="aria-label=|发布活动 ${publicationActivityCount} 次，发布记录 ${publicationCount}|">
+                                <div class="monitor-column-value"><strong data-chart-number th:data-chart-value="${publicationActivityCount}" th:text="${publicationActivityCount}">0</strong><span>次</span></div><div class="monitor-column-track" aria-hidden="true"><i></i></div><div class="monitor-column-label"><strong>发布</strong><small th:text="|总量 ${publicationCount}|">总量 0</small></div>
+                            </article>
+                        </div>
+                    </div>
+
+                    <div class="monitor-state-switcher" data-monitor-tabs data-monitor-tab-group="state">
+                        <div class="monitor-state-toolbar"><div><h4>状态分布</h4><p>按业务链路切换查看</p></div><div class="monitor-tabs" role="tablist" aria-label="状态分布类型"><button id="monitor-tab-content" type="button" role="tab" aria-selected="true" aria-controls="monitor-state-content" data-monitor-tab="content">内容</button><button id="monitor-tab-jobs" type="button" role="tab" aria-selected="false" aria-controls="monitor-state-jobs" data-monitor-tab="jobs">任务</button><button id="monitor-tab-publishing" type="button" role="tab" aria-selected="false" aria-controls="monitor-state-publishing" data-monitor-tab="publishing">发布</button></div></div>
+                        <section id="monitor-state-content" class="monitor-state-view" role="tabpanel" aria-labelledby="monitor-tab-content" data-monitor-tab-panel="content">
+                            <div class="monitor-state-heading"><strong>内容生产漏斗</strong><span th:text="|${publishableArticleCount} 篇可发布|">0 篇可发布</span></div>
+                            <div class="monitor-stage"><div><strong>项目就绪率</strong><span th:text="|${readyProjectRate}%|">0%</span></div><progress class="tone-success" th:value="${readyProjectRate}" max="100">0</progress></div>
+                            <div class="monitor-bars"><div class="monitor-bar" th:each="item : ${projectStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div></div>
+                            <div class="monitor-divider"></div>
+                            <div class="monitor-bars"><div class="monitor-bar" th:each="item : ${articleStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div></div>
+                        </section>
+                        <section id="monitor-state-jobs" class="monitor-state-view" role="tabpanel" aria-labelledby="monitor-tab-jobs" data-monitor-tab-panel="jobs" hidden>
+                            <div class="monitor-state-heading"><strong>任务运行状态</strong><span th:text="|成功率 ${jobSuccessRate}%|">成功率 0%</span></div>
+                            <div class="monitor-bars monitor-bars-spacious"><div class="monitor-bar" th:each="item : ${jobStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div></div>
+                        </section>
+                        <section id="monitor-state-publishing" class="monitor-state-view" role="tabpanel" aria-labelledby="monitor-tab-publishing" data-monitor-tab-panel="publishing" hidden>
+                            <div class="monitor-state-heading"><strong>发布运行状态</strong><span th:text="|成功率 ${publicationSuccessRate}%|">成功率 0%</span></div>
+                            <div class="monitor-bars monitor-bars-spacious"><div class="monitor-bar" th:each="item : ${publicationStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div></div>
+                            <div class="monitor-divider"></div><div class="monitor-source-grid"><div th:each="item : ${sourceStatus}"><span th:text="${item.label}">来源</span><strong th:text="${item.value}">0</strong><small th:text="|${item.percentage}%|">0%</small></div></div>
+                        </section>
+                    </div>
+                </div>
             </section>
 
-            <div class="monitor-grid monitor-grid-overview">
-                <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">内容流程</p><h3>内容生产漏斗</h3></div><span th:text="|${publishableArticleCount} 篇可发布|">0 篇可发布</span></div>
-                    <div class="monitor-stage"><div><strong>项目就绪率</strong><span th:text="|${readyProjectRate}%|">0%</span></div><progress class="tone-success" th:value="${readyProjectRate}" max="100">0</progress></div>
-                    <div class="monitor-bars">
-                        <div class="monitor-bar" th:each="item : ${projectStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div>
-                    </div>
-                    <div class="monitor-divider"></div>
-                    <div class="monitor-bars">
-                        <div class="monitor-bar" th:each="item : ${articleStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div>
-                    </div>
-                </section>
-
-                <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">任务运行</p><h3>任务运行状态</h3></div><span th:text="|成功率 ${jobSuccessRate}%|">成功率 0%</span></div>
-                    <div class="monitor-bars monitor-bars-spacious">
-                        <div class="monitor-bar" th:each="item : ${jobStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div>
-                    </div>
-                </section>
-
-                <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">发布状态</p><h3>发布运行状态</h3></div><span th:text="|成功率 ${publicationSuccessRate}%|">成功率 0%</span></div>
-                    <div class="monitor-bars monitor-bars-spacious">
-                        <div class="monitor-bar" th:each="item : ${publicationStatus}"><div><span th:text="${item.label}">状态</span><strong th:text="${item.value}">0</strong></div><progress th:class="|tone-${item.tone}|" th:value="${item.value}" th:max="${item.total}">0</progress><small th:text="|${item.percentage}%|">0%</small></div>
-                    </div>
-                    <div class="monitor-divider"></div>
-                    <div class="monitor-source-grid">
-                        <div th:each="item : ${sourceStatus}"><span th:text="${item.label}">来源</span><strong th:text="${item.value}">0</strong><small th:text="|${item.percentage}%|">0%</small></div>
-                    </div>
-                </section>
-            </div>
-
-            <div class="monitor-grid monitor-grid-detail">
-                <section class="monitor-panel monitor-channel-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">渠道表现</p><h3>渠道发布表现</h3><small th:text="${rangeLabel}">近 24 小时</small></div><a th:href="@{/publishing}">发布中心 ↗</a></div>
+            <section class="monitor-operations" aria-label="渠道表现与运行告警">
+                <div class="monitor-channel-area">
+                    <header class="monitor-section-header"><div><p class="section-kicker">渠道表现</p><h3>渠道发布表现</h3><small th:text="${rangeLabel}">近 24 小时</small></div><a th:href="@{/publishing}">发布中心 ↗</a></header>
                     <div class="monitor-empty" th:if="${#lists.isEmpty(channelPerformance)}">暂无发布记录，渠道表现将在首次发布后显示。</div>
-                    <div class="monitor-channel-list" th:unless="${#lists.isEmpty(channelPerformance)}">
-                        <div class="monitor-channel-row monitor-channel-head"><span>渠道</span><span>记录</span><span>成功</span><span>失败</span><span>成功率</span></div>
-                        <div class="monitor-channel-row" th:each="channel : ${channelPerformance}"><strong th:text="${channel.displayName}">渠道</strong><span th:text="${channel.total}">0</span><span class="tone-success" th:text="${channel.published}">0</span><span class="tone-danger" th:text="${channel.failed}">0</span><span><b th:text="|${channel.successRate}%|">0%</b><progress class="tone-success" th:value="${channel.successRate}" max="100">0</progress></span></div>
-                    </div>
-                </section>
-
-                <section class="monitor-panel monitor-alert-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">当前告警</p><h3>运行告警</h3><small th:text="${rangeLabel}">近 24 小时</small></div><span th:text="|${alerts.size()} 项|">0 项</span></div>
-                    <div class="monitor-alert-list">
-                        <a th:each="alert : ${alerts}" th:href="${alert.link}" th:class="|monitor-alert alert-${alert.tone}|"><i></i><span><strong th:text="${alert.title}">告警</strong><small th:text="${alert.description}">说明</small></span><b th:text="${alert.count}">0</b></a>
-                    </div>
+                    <div class="monitor-channel-list" th:unless="${#lists.isEmpty(channelPerformance)}"><div class="monitor-channel-row monitor-channel-head"><span>渠道</span><span>记录</span><span>成功</span><span>失败</span><span>成功率</span></div><div class="monitor-channel-row" th:each="channel : ${channelPerformance}"><strong th:text="${channel.displayName}">渠道</strong><span th:text="${channel.total}">0</span><span class="tone-success" th:text="${channel.published}">0</span><span class="tone-danger" th:text="${channel.failed}">0</span><span><b th:text="|${channel.successRate}%|">0%</b><progress class="tone-success" th:value="${channel.successRate}" max="100">0</progress></span></div></div>
+                </div>
+                <aside class="monitor-alert-area">
+                    <header class="monitor-section-header"><div><p class="section-kicker">当前告警</p><h3>运行告警</h3><small th:text="${rangeLabel}">近 24 小时</small></div><span th:text="|${alerts.size()} 项|">0 项</span></header>
+                    <div class="monitor-alert-list"><a th:each="alert : ${alerts}" th:href="${alert.link}" th:class="|monitor-alert alert-${alert.tone}|"><i></i><span><strong th:text="${alert.title}">告警</strong><small th:text="${alert.description}">说明</small></span><b th:text="${alert.count}">0</b></a></div>
                     <div class="monitor-alert-summary"><div><span>失败任务</span><strong th:text="${failedJobCount}">0</strong></div><div><span>发布失败</span><strong th:text="${failedPublicationCount}">0</strong></div><div><span>停用账号</span><strong th:text="${disabledAccountCount}">0</strong></div></div>
-                </section>
-            </div>
+                </aside>
+            </section>
 
-            <div class="monitor-grid monitor-grid-feed">
-                <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">最近任务</p><h3>最近任务动态</h3></div><a th:href="@{/projects}">任务中心 ↗</a></div>
-                    <div class="monitor-empty" th:if="${#lists.isEmpty(recentJobs)}">当前没有后台任务。</div>
-                    <div class="monitor-feed" th:unless="${#lists.isEmpty(recentJobs)}"><a th:each="job : ${recentJobs}" th:href="@{/jobs/{id}(id=${job.id})}"><i th:class="|feed-dot status-${job.status.name().toLowerCase()}|"></i><span><strong th:text="${jobTypeNames.get(job.type)}">任务</strong><small th:text="${job.updatedAt}">时间</small></span><em th:class="|status-pill status-${job.status.name().toLowerCase()}|" th:text="${jobStatusNames.get(job.status)}">状态</em></a></div>
-                </section>
-
-                <section class="monitor-panel">
-                    <div class="monitor-panel-header"><div><p class="section-kicker">发布动态</p><h3>最近发布动态</h3></div><a th:href="@{/publishing}">全部记录 ↗</a></div>
-                    <div class="monitor-empty" th:if="${#lists.isEmpty(recentPublications)}">当前没有发布记录。</div>
-                    <div class="monitor-feed" th:unless="${#lists.isEmpty(recentPublications)}"><a th:each="record : ${recentPublications}" th:href="@{/articles/{id}(id=${record.articleId})}"><i th:class="|feed-dot status-${record.status.name().toLowerCase()}|"></i><span><strong th:text="${articleNames.get(record.articleId) != null ? articleNames.get(record.articleId) : record.articleId}">文章</strong><small th:text="|${channelNames.get(record.channelType)} · ${record.method.name() == 'API' ? 'API 自动发布' : '人工发布'} · ${record.updatedAt}|">渠道与时间</small></span><em th:class="|status-pill status-${record.status.name().toLowerCase()}|" th:text="${publicationStatusNames.get(record.status)}">状态</em></a></div>
-                </section>
-            </div>
+            <section class="monitor-feed-section" aria-labelledby="monitor-feed-title" data-monitor-tabs data-monitor-tab-group="feed">
+                <header class="monitor-section-header"><div><p class="section-kicker">最近动态</p><h3 id="monitor-feed-title">运行时间线</h3></div><div class="monitor-tabs" role="tablist" aria-label="动态类型"><button id="monitor-tab-recent-jobs" type="button" role="tab" aria-selected="true" aria-controls="monitor-feed-jobs" data-monitor-tab="jobs">任务</button><button id="monitor-tab-recent-publishing" type="button" role="tab" aria-selected="false" aria-controls="monitor-feed-publishing" data-monitor-tab="publishing">发布</button></div></header>
+                <section id="monitor-feed-jobs" class="monitor-feed-view" role="tabpanel" aria-labelledby="monitor-tab-recent-jobs" data-monitor-tab-panel="jobs"><div class="monitor-feed-toolbar"><span>按更新时间排列</span><a th:href="@{/jobs}">全部任务 ↗</a></div><div class="monitor-empty" th:if="${#lists.isEmpty(recentJobs)}">当前没有后台任务。</div><div class="monitor-feed" th:unless="${#lists.isEmpty(recentJobs)}"><a th:each="job : ${recentJobs}" th:href="@{/jobs/{id}(id=${job.id})}"><i th:class="|feed-dot status-${job.status.name().toLowerCase()}|"></i><span><strong th:text="${jobTypeNames.get(job.type)}">任务</strong><small th:text="${job.updatedAt}">时间</small></span><em th:class="|status-pill status-${job.status.name().toLowerCase()}|" th:text="${jobStatusNames.get(job.status)}">状态</em></a></div></section>
+                <section id="monitor-feed-publishing" class="monitor-feed-view" role="tabpanel" aria-labelledby="monitor-tab-recent-publishing" data-monitor-tab-panel="publishing" hidden><div class="monitor-feed-toolbar"><span>按更新时间排列</span><a th:href="@{/publishing}">全部记录 ↗</a></div><div class="monitor-empty" th:if="${#lists.isEmpty(recentPublications)}">当前没有发布记录。</div><div class="monitor-feed" th:unless="${#lists.isEmpty(recentPublications)}"><a th:each="record : ${recentPublications}" th:href="@{/articles/{id}(id=${record.articleId})}"><i th:class="|feed-dot status-${record.status.name().toLowerCase()}|"></i><span><strong th:text="${articleNames.get(record.articleId) != null ? articleNames.get(record.articleId) : record.articleId}">文章</strong><small th:text="|${channelNames.get(record.channelType)} · ${record.method.name() == 'API' ? 'API 自动发布' : '人工发布'} · ${record.updatedAt}|">渠道与时间</small></span><em th:class="|status-pill status-${record.status.name().toLowerCase()}|" th:text="${publicationStatusNames.get(record.status)}">状态</em></a></div></section>
+            </section>
             </div>
         </main>
     </div>
