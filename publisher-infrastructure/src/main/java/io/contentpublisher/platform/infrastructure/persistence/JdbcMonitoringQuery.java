@@ -38,31 +38,34 @@ public class JdbcMonitoringQuery implements MonitoringQuery {
                 "select status, count(*) as total from projects where tenant_id = ? group by status",
                 tenantId, ProjectStatus.class);
         Map<ArticleStatus, Long> articleStatus = grouped(
-                "select status, count(*) as total from articles where tenant_id = ? group by status",
+                "select status, count(*) as total from articles where tenant_id = ? and deleted_at is null group by status",
                 tenantId, ArticleStatus.class);
         Map<ArticleSourceType, Long> articleSources = grouped(
-                "select source_type, count(*) as total from articles where tenant_id = ? group by source_type",
+                "select source_type, count(*) as total from articles where tenant_id = ? and deleted_at is null group by source_type",
                 tenantId, ArticleSourceType.class);
         Map<JobStatus, Long> jobStatus = grouped(
-                "select status, count(*) as total from jobs where tenant_id = ? group by status",
+                "select status, count(*) as total from jobs where tenant_id = ? and deleted_at is null group by status",
                 tenantId, JobStatus.class);
         Map<JobStatus, Long> windowJobStatus = grouped(
-                "select status, count(*) as total from jobs where tenant_id = ? and updated_at >= ? group by status",
+                "select status, count(*) as total from jobs where tenant_id = ? and deleted_at is null "
+                        + "and updated_at >= ? group by status",
                 new Object[]{tenantId, since}, JobStatus.class);
         Map<PublicationStatus, Long> publicationStatus = publicationStatus(tenantId, null);
         Map<PublicationStatus, Long> windowPublicationStatus = publicationStatus(tenantId, since);
 
         long projectCount = count("select count(*) from projects where tenant_id = ?", tenantId);
-        long articleCount = count("select count(*) from articles where tenant_id = ?", tenantId);
-        long jobCount = count("select count(*) from jobs where tenant_id = ?", tenantId);
-        long apiPublicationCount = count("select count(*) from publications where tenant_id = ?", tenantId);
-        long manualPublicationCount = count("select count(*) from manual_publications where tenant_id = ?", tenantId);
+        long articleCount = count("select count(*) from articles where tenant_id = ? and deleted_at is null", tenantId);
+        long jobCount = count("select count(*) from jobs where tenant_id = ? and deleted_at is null", tenantId);
+        long apiPublicationCount = count(
+                "select count(*) from publications where tenant_id = ? and deleted_at is null", tenantId);
+        long manualPublicationCount = count(
+                "select count(*) from manual_publications where tenant_id = ? and deleted_at is null", tenantId);
         long accountCount = count("select count(*) from channel_accounts where tenant_id = ?", tenantId);
 
         return new MonitoringSnapshot(capturedAt, windowStart, window,
-                projectCount, activityCount("projects", tenantId, since), projectStatus,
-                articleCount, activityCount("articles", tenantId, since), articleStatus, articleSources,
-                jobCount, activityCount("jobs", tenantId, since), jobStatus, windowJobStatus,
+                projectCount, activityCount("projects", tenantId, since, false), projectStatus,
+                articleCount, activityCount("articles", tenantId, since, true), articleStatus, articleSources,
+                jobCount, activityCount("jobs", tenantId, since, true), jobStatus, windowJobStatus,
                 apiPublicationCount + manualPublicationCount, publicationActivityCount(tenantId, since),
                 publicationStatus, windowPublicationStatus,
                 accountCount, grouped(
@@ -72,12 +75,12 @@ public class JdbcMonitoringQuery implements MonitoringQuery {
     }
 
     private Map<PublicationStatus, Long> publicationStatus(String tenantId, Timestamp since) {
-        String apiSql = "select status, count(*) as total from publications where tenant_id = ?"
+        String apiSql = "select status, count(*) as total from publications where tenant_id = ? and deleted_at is null"
                 + (since == null ? "" : " and updated_at >= ?") + " group by status";
         Map<PublicationStatus, Long> result = since == null
                 ? grouped(apiSql, tenantId, PublicationStatus.class)
                 : grouped(apiSql, new Object[]{tenantId, since}, PublicationStatus.class);
-        String manualSql = "select count(*) from manual_publications where tenant_id = ?"
+        String manualSql = "select count(*) from manual_publications where tenant_id = ? and deleted_at is null"
                 + (since == null ? "" : " and published_at >= ?");
         long manualPublished = since == null ? count(manualSql, tenantId) : count(manualSql, tenantId, since);
         result.merge(PublicationStatus.PUBLISHED, manualPublished, Long::sum);
@@ -87,7 +90,8 @@ public class JdbcMonitoringQuery implements MonitoringQuery {
     private List<MonitoringSnapshot.ChannelPerformance> channelPerformance(String tenantId, Timestamp since) {
         Map<ChannelType, MutableChannelPerformance> metrics = new EnumMap<>(ChannelType.class);
         jdbcTemplate.query("select channel_type, status, count(*) as total from publications "
-                        + "where tenant_id = ? and updated_at >= ? group by channel_type, status",
+                        + "where tenant_id = ? and deleted_at is null and updated_at >= ? "
+                        + "group by channel_type, status",
                 rs -> {
                     ChannelType type = ChannelType.valueOf(rs.getString("channel_type"));
                     PublicationStatus status = PublicationStatus.valueOf(rs.getString("status"));
@@ -99,7 +103,7 @@ public class JdbcMonitoringQuery implements MonitoringQuery {
                     if (status == PublicationStatus.FAILED) metric.failed += value;
                 }, tenantId, since);
         jdbcTemplate.query("select channel_type, count(*) as total from manual_publications "
-                        + "where tenant_id = ? and published_at >= ? group by channel_type",
+                        + "where tenant_id = ? and deleted_at is null and published_at >= ? group by channel_type",
                 rs -> {
                     ChannelType type = ChannelType.valueOf(rs.getString("channel_type"));
                     long value = rs.getLong("total");
@@ -116,18 +120,24 @@ public class JdbcMonitoringQuery implements MonitoringQuery {
 
     private long coveredChannelCount(String tenantId) {
         return count("select count(*) from (select channel_type from publications "
-                + "where tenant_id = ? and status = 'PUBLISHED' union select channel_type "
-                + "from manual_publications where tenant_id = ?) covered", tenantId, tenantId);
+                + "where tenant_id = ? and deleted_at is null and status = 'PUBLISHED' union select channel_type "
+                + "from manual_publications where tenant_id = ? and deleted_at is null) covered", tenantId, tenantId);
     }
 
     private long publicationActivityCount(String tenantId, Timestamp since) {
-        return count("select count(*) from publications where tenant_id = ? and updated_at >= ?", tenantId, since)
-                + count("select count(*) from manual_publications where tenant_id = ? and published_at >= ?",
-                tenantId, since);
+        return count("select count(*) from publications where tenant_id = ? and deleted_at is null "
+                        + "and updated_at >= ?", tenantId, since)
+                + count("select count(*) from manual_publications where tenant_id = ? and deleted_at is null "
+                        + "and published_at >= ?", tenantId, since);
     }
 
-    private long activityCount(String table, String tenantId, Timestamp since) {
-        return count("select count(*) from " + table + " where tenant_id = ? and updated_at >= ?", tenantId, since);
+    private long activityCount(String table, String tenantId, Timestamp since, boolean supportsSoftDelete) {
+        if (!List.of("projects", "articles", "jobs").contains(table)) {
+            throw new IllegalArgumentException("不支持的监控表: " + table);
+        }
+        String activeFilter = supportsSoftDelete ? " and deleted_at is null" : "";
+        return count("select count(*) from " + table + " where tenant_id = ?" + activeFilter
+                + " and updated_at >= ?", tenantId, since);
     }
 
     private <E extends Enum<E>> Map<E, Long> grouped(String sql, String tenantId, Class<E> type) {

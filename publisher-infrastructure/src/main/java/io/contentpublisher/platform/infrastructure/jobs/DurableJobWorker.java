@@ -2,13 +2,11 @@ package io.contentpublisher.platform.infrastructure.jobs;
 
 import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.application.JobProgressReporter;
-import io.contentpublisher.platform.application.ProjectApplicationService;
-import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.Job;
-import io.contentpublisher.platform.domain.JobPayload;
+import io.contentpublisher.platform.domain.JobType;
 import io.contentpublisher.platform.infrastructure.config.JobProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +18,8 @@ import java.net.InetAddress;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -33,19 +33,16 @@ public class DurableJobWorker {
             "WEBSITE_FETCH_FAILED", "WEBSITE_FETCH_INTERRUPTED", "AI_META_NARRATION_REJECTED");
 
     private final JobRepository jobs;
-    private final ProjectApplicationService projects;
-    private final PublishingApplicationService publishing;
+    private final Map<JobType, JobHandler> handlers;
     private final AuditRecorder auditRecorder;
     private final JobProperties properties;
     private final Clock clock;
     private final String workerId;
 
-    public DurableJobWorker(JobRepository jobs, ProjectApplicationService projects,
-                            PublishingApplicationService publishing, AuditRecorder auditRecorder,
+    public DurableJobWorker(JobRepository jobs, List<JobHandler> handlers, AuditRecorder auditRecorder,
                             JobProperties properties, Clock clock) {
         this.jobs = jobs;
-        this.projects = projects;
-        this.publishing = publishing;
+        this.handlers = handlerRegistry(handlers);
         this.auditRecorder = auditRecorder;
         this.properties = properties;
         this.clock = clock;
@@ -62,29 +59,11 @@ public class DurableJobWorker {
         ActorContext actor = new ActorContext(job.tenantId(), job.actorSubject());
         JobProgressReporter progress = progressReporter(job);
         try {
-            UUID resultId = switch (job.type()) {
-                case IMPORT_PROJECT -> {
-                    JobPayload.ImportProject payload = (JobPayload.ImportProject) job.payload();
-                    yield projects.importProject(actor, payload.gitUrl(), payload.branch(), progress).id();
-                }
-                case GENERATE_ARTICLE -> {
-                    JobPayload.GenerateArticle payload = (JobPayload.GenerateArticle) job.payload();
-                    yield projects.generateArticle(actor, payload.projectId(), payload.policy(), job.id(), progress).id();
-                }
-                case GENERATE_TOPIC_ARTICLE -> {
-                    JobPayload.GenerateTopicArticle payload = (JobPayload.GenerateTopicArticle) job.payload();
-                    yield projects.generateTopicArticle(actor, payload.brief(), payload.policy(), job.id(), progress).id();
-                }
-                case GENERATE_WEBSITE_ARTICLE -> {
-                    JobPayload.GenerateWebsiteArticle payload = (JobPayload.GenerateWebsiteArticle) job.payload();
-                    yield projects.generateWebsiteArticle(actor, payload.brief(), payload.policy(), job.id(), progress).id();
-                }
-                case PUBLISH_ARTICLE -> {
-                    JobPayload.PublishArticle payload = (JobPayload.PublishArticle) job.payload();
-                    yield publishing.publish(actor, payload.articleId(), payload.channelAccountId(),
-                            payload.canonicalUrl(), job.id(), progress).id();
-                }
-            };
+            JobHandler handler = handlers.get(job.type());
+            if (handler == null) {
+                throw new ApplicationException("JOB_HANDLER_NOT_FOUND", "任务类型尚未注册执行器: " + job.type());
+            }
+            UUID resultId = handler.handle(job, actor, progress);
             Instant completedAt = clock.instant();
             if (jobs.markSucceeded(job.id(), workerId, resultId, completedAt)) {
                 auditRecorder.record(actor, "JOB_SUCCEEDED", "JOB", job.id(),
@@ -135,6 +114,17 @@ public class DurableJobWorker {
             calculated = properties.maxRetryDelay();
         }
         return calculated.compareTo(properties.maxRetryDelay()) > 0 ? properties.maxRetryDelay() : calculated;
+    }
+
+    private Map<JobType, JobHandler> handlerRegistry(List<JobHandler> candidates) {
+        Map<JobType, JobHandler> registry = new EnumMap<>(JobType.class);
+        for (JobHandler handler : candidates) {
+            JobHandler previous = registry.putIfAbsent(handler.type(), handler);
+            if (previous != null) {
+                throw new IllegalStateException("任务类型存在重复执行器: " + handler.type());
+            }
+        }
+        return Map.copyOf(registry);
     }
 
     private String resolveWorkerId() {

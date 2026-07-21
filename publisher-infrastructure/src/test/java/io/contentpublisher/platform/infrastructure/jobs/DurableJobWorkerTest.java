@@ -1,8 +1,8 @@
 package io.contentpublisher.platform.infrastructure.jobs;
 
 import io.contentpublisher.platform.application.ApplicationException;
+import io.contentpublisher.platform.application.ProjectImportApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
-import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.domain.Job;
@@ -77,7 +77,11 @@ class DurableJobWorkerTest {
     private DurableJobWorker worker(JobRepository jobs, ProjectApplicationService projects, AuditRecorder audits) {
         JobProperties properties = new JobProperties(true, 20, 3, Duration.ofSeconds(1),
                 Duration.ofMinutes(5), Duration.ofSeconds(10), Duration.ofMinutes(5));
-        return new DurableJobWorker(jobs, projects, mock(PublishingApplicationService.class), audits,
+        ProjectImportApplicationService imports = mock(ProjectImportApplicationService.class);
+        when(imports.importProject(any(), anyString(), any(), any())).thenAnswer(invocation ->
+                projects.importProject(invocation.getArgument(0), invocation.getArgument(1),
+                        invocation.getArgument(2), invocation.getArgument(3)));
+        return new DurableJobWorker(jobs, java.util.List.of(new ImportProjectJobHandler(imports)), audits,
                 properties, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

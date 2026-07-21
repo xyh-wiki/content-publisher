@@ -1,7 +1,13 @@
 package io.contentpublisher.platform.infrastructure.config;
 
 import io.contentpublisher.platform.application.AiSettingsApplicationService;
+import io.contentpublisher.platform.application.ArticleEditorialApplicationService;
+import io.contentpublisher.platform.application.ChannelAccountApplicationService;
+import io.contentpublisher.platform.application.ContentGenerationApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
+import io.contentpublisher.platform.application.ProjectImportApplicationService;
+import io.contentpublisher.platform.application.PublicationCommandApplicationService;
+import io.contentpublisher.platform.application.PublicationQueryApplicationService;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.RecordManagementApplicationService;
@@ -62,16 +68,31 @@ public class InfrastructureConfiguration {
     }
 
     @Bean
-    ProjectApplicationService projectApplicationService(ProjectRepository projects,
-                                                         ArticleRepository articles,
-                                                         RepositorySnapshotStore snapshots,
-                                                         RepositoryInspector inspector,
-                                                         WebsiteInspector websiteInspector,
-                                                         ContentGenerator generator,
-                                                         AuditRecorder auditRecorder,
-                                                         Clock clock) {
-        return new ProjectApplicationService(projects, articles, snapshots, inspector, websiteInspector, generator,
+    ProjectImportApplicationService projectImportApplicationService(ProjectRepository projects,
+                                                                    RepositorySnapshotStore snapshots,
+                                                                    RepositoryInspector inspector,
+                                                                    AuditRecorder auditRecorder,
+                                                                    Clock clock) {
+        return new ProjectImportApplicationService(projects, snapshots, inspector, auditRecorder, clock);
+    }
+
+    @Bean
+    ContentGenerationApplicationService contentGenerationApplicationService(ProjectRepository projects,
+                                                                            ArticleRepository articles,
+                                                                            RepositorySnapshotStore snapshots,
+                                                                            WebsiteInspector websiteInspector,
+                                                                            ContentGenerator generator,
+                                                                            AuditRecorder auditRecorder,
+                                                                            Clock clock) {
+        return new ContentGenerationApplicationService(projects, articles, snapshots, websiteInspector, generator,
                 auditRecorder, clock);
+    }
+
+    @Bean
+    ProjectApplicationService projectApplicationService(ProjectRepository projects, ArticleRepository articles,
+                                                         ProjectImportApplicationService imports,
+                                                         ContentGenerationApplicationService generation) {
+        return new ProjectApplicationService(projects, articles, imports, generation);
     }
 
     @Bean
@@ -80,18 +101,48 @@ public class InfrastructureConfiguration {
     }
 
     @Bean
-    PublishingApplicationService publishingApplicationService(ArticleRepository articles,
-                                                               ChannelAccountRepository accounts,
-                                                               PublicationRepository publications,
-                                                               ManualPublicationRepository manualPublications,
-                                                               CredentialVault credentialVault,
-                                                               ChannelEndpointPolicy endpointPolicy,
-                                                               List<ChannelPublisher> publishers,
-                                                               AuditRecorder auditRecorder,
-                                                               PlatformContentAdapter contentAdapter,
-                                                               Clock clock) {
-        return new PublishingApplicationService(articles, accounts, publications, manualPublications,
-                credentialVault, endpointPolicy, publishers, auditRecorder, contentAdapter, clock);
+    ChannelAccountApplicationService channelAccountApplicationService(ChannelAccountRepository accounts,
+                                                                      CredentialVault credentialVault,
+                                                                      ChannelEndpointPolicy endpointPolicy,
+                                                                      AuditRecorder auditRecorder, Clock clock) {
+        return new ChannelAccountApplicationService(accounts, credentialVault, endpointPolicy, auditRecorder, clock);
+    }
+
+    @Bean
+    ArticleEditorialApplicationService articleEditorialApplicationService(ArticleRepository articles,
+                                                                          AuditRecorder auditRecorder, Clock clock) {
+        return new ArticleEditorialApplicationService(articles, auditRecorder, clock);
+    }
+
+    @Bean
+    PublicationCommandApplicationService publicationCommandApplicationService(ArticleRepository articles,
+                                                                              ChannelAccountRepository accounts,
+                                                                              PublicationRepository publications,
+                                                                              ManualPublicationRepository manual,
+                                                                              CredentialVault credentialVault,
+                                                                              ChannelEndpointPolicy endpointPolicy,
+                                                                              List<ChannelPublisher> publishers,
+                                                                              AuditRecorder auditRecorder,
+                                                                              PlatformContentAdapter contentAdapter,
+                                                                              Clock clock) {
+        return new PublicationCommandApplicationService(articles, accounts, publications, manual, credentialVault,
+                endpointPolicy, publishers, auditRecorder, contentAdapter, clock);
+    }
+
+    @Bean
+    PublicationQueryApplicationService publicationQueryApplicationService(ArticleRepository articles,
+                                                                          ChannelAccountRepository accounts,
+                                                                          PublicationRepository publications,
+                                                                          ManualPublicationRepository manual) {
+        return new PublicationQueryApplicationService(articles, accounts, publications, manual);
+    }
+
+    @Bean
+    PublishingApplicationService publishingApplicationService(ChannelAccountApplicationService accounts,
+                                                               ArticleEditorialApplicationService articles,
+                                                               PublicationCommandApplicationService commands,
+                                                               PublicationQueryApplicationService queries) {
+        return new PublishingApplicationService(accounts, articles, commands, queries);
     }
 
     @Bean

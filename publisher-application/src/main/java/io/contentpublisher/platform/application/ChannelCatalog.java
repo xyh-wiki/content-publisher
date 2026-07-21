@@ -94,7 +94,33 @@ public final class ChannelCatalog {
                                                                    String contentHint, List<String> publishedHosts,
                                                                    ChannelRegion region) {
         return Map.entry(type, new ChannelDefinition(type, displayName, apiSupported, format, characterLimit,
-                editorUrl, contentHint, publishedHosts, region));
+                editorUrl, contentHint, publishedHosts, region, credentialFields(type)));
+    }
+
+    private static List<CredentialField> credentialFields(ChannelType type) {
+        return switch (type) {
+            case DEV -> List.of(credential("apiKey", "API Key"));
+            case WORDPRESS -> List.of(credential("username", "用户名"),
+                    credential("applicationPassword", "Application Password"));
+            case DISCOURSE -> List.of(credential("apiKey", "API Key"),
+                    credential("apiUsername", "API Username"));
+            case GITHUB_DISCUSSIONS -> List.of(credential("token", "Access Token"),
+                    credential("repositoryId", "Repository ID"), credential("categoryId", "Category ID"));
+            case X -> List.of(credential("accessToken", "Access Token"));
+            case REDDIT -> List.of(credential("accessToken", "Access Token"), credential("subreddit", "Subreddit"));
+            case HASHNODE -> List.of(credential("token", "Access Token"),
+                    credential("publicationId", "Publication ID"));
+            case MEDIUM -> List.of(credential("token", "Integration Token"), credential("authorId", "Author ID"));
+            case MASTODON -> List.of(credential("accessToken", "Access Token"));
+            case GHOST -> List.of(credential("adminApiKey", "Admin API Key"));
+            case XIAOHONGSHU, CSDN, JUEJIN, ZHIHU, CNBLOGS, SEGMENTFAULT, V2EX, OSCHINA,
+                    LINKEDIN, WECHAT_OFFICIAL, JIANSHU, TOUTIAO, BILIBILI_COLUMN, BLOG_51CTO,
+                    TENCENT_CLOUD, ALIBABA_CLOUD, HUAWEI_CLOUD -> List.of();
+        };
+    }
+
+    private static CredentialField credential(String key, String label) {
+        return new CredentialField(key, label);
     }
 
     public enum ChannelRegion {
@@ -111,13 +137,26 @@ public final class ChannelCatalog {
             String editorUrl,
             String contentHint,
             List<String> publishedHosts,
-            ChannelRegion region) {
+            ChannelRegion region,
+            List<CredentialField> credentialFields) {
         public ChannelDefinition {
             publishedHosts = List.copyOf(publishedHosts);
+            credentialFields = List.copyOf(credentialFields);
         }
 
         public boolean manualAvailable() {
             return editorUrl != null;
         }
+
+        public List<String> credentialKeys() {
+            return credentialFields.stream().map(CredentialField::key).toList();
+        }
+
+        public String credentialLabelsAttribute() {
+            return String.join("|", credentialFields.stream().map(CredentialField::label).toList());
+        }
+    }
+
+    public record CredentialField(String key, String label) {
     }
 }
