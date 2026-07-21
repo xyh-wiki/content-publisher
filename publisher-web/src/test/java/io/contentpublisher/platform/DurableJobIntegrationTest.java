@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:jobs;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-        "publisher.security.enabled=false",
+        "publisher.security.mode=DISABLED",
         "publisher.jobs.worker-enabled=false",
         "publisher.jobs.max-active-jobs-per-tenant=1",
         "publisher.jobs.max-attempts=3"

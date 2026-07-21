@@ -14,7 +14,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @Component
-@ConditionalOnProperty(name = "publisher.security.local.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "publisher.security.mode", havingValue = "LOCAL")
 public class LocalAdminBootstrap implements ApplicationRunner {
     private final JdbcTemplate jdbcTemplate;
     private final PasswordEncoder passwordEncoder;

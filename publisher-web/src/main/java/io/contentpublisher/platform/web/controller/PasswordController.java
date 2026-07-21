@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 
 @Controller
-@ConditionalOnProperty(name = "publisher.security.local.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "publisher.security.mode", havingValue = "LOCAL")
 public class PasswordController {
     private final LocalPasswordService passwords;
 

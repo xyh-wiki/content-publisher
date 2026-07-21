@@ -3,8 +3,7 @@ package io.contentpublisher.platform.web.security;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("publisher.security.local")
-public record LocalSecurityProperties(boolean enabled, String bootstrapUsername,
-                                      String bootstrapPassword, String bootstrapTenant,
+public record LocalSecurityProperties(String bootstrapUsername, String bootstrapPassword, String bootstrapTenant,
                                       boolean bootstrapMustChangePassword) {
     public LocalSecurityProperties {
         bootstrapUsername = normalize(bootstrapUsername);

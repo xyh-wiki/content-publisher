@@ -41,8 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:local_security;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-        "publisher.security.enabled=false",
-        "publisher.security.local.enabled=true",
+        "publisher.security.mode=LOCAL",
         "publisher.security.local.bootstrap-username=admin",
         "publisher.security.local.bootstrap-password=enterprise-password-001",
         "publisher.security.local.bootstrap-tenant=tenant-local",

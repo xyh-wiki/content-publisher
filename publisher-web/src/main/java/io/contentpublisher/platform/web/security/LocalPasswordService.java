@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Set;
 
 @Service
-@ConditionalOnProperty(name = "publisher.security.local.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "publisher.security.mode", havingValue = "LOCAL")
 public class LocalPasswordService {
     private static final Set<String> DISALLOWED = Set.of(
             "admin123", "password", "password123", "12345678", "qwerty123", "admin123456");

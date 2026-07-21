@@ -1,5 +1,6 @@
 package io.contentpublisher.platform.web.security;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -12,6 +13,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @Service
+@ConditionalOnProperty(name = "publisher.security.mode", havingValue = "LOCAL")
 public class DatabaseUserDetailsService implements UserDetailsService {
     private final JdbcTemplate jdbcTemplate;
 

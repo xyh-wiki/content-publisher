@@ -53,13 +53,12 @@ publisher:
     initial-retry-delay: ${PUBLISHER_JOBS_INITIAL_RETRY_DELAY:10s}
     max-retry-delay: ${PUBLISHER_JOBS_MAX_RETRY_DELAY:5m}
   security:
-    enabled: ${PUBLISHER_SECURITY_ENABLED:false}
+    mode: ${PUBLISHER_SECURITY_MODE:DISABLED}
     tenant-claim: ${PUBLISHER_SECURITY_TENANT_CLAIM:tenant_id}
     roles-claim: ${PUBLISHER_SECURITY_ROLES_CLAIM:roles}
     default-tenant: ${PUBLISHER_DEFAULT_TENANT:local}
     default-subject: ${PUBLISHER_DEFAULT_SUBJECT:local-developer}
     local:
-      enabled: ${PUBLISHER_LOCAL_SECURITY_ENABLED:false}
       bootstrap-username: ${PUBLISHER_LOCAL_ADMIN_USERNAME:}
       bootstrap-password: ${PUBLISHER_LOCAL_ADMIN_PASSWORD:}
       bootstrap-tenant: ${PUBLISHER_LOCAL_ADMIN_TENANT:local}

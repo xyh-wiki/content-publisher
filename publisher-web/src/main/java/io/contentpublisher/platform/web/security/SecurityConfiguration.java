@@ -2,7 +2,6 @@ package io.contentpublisher.platform.web.security;
 
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,13 +24,13 @@ import java.nio.charset.StandardCharsets;
 @EnableConfigurationProperties({SecurityProperties.class, LocalSecurityProperties.class})
 public class SecurityConfiguration {
     @Bean
-    @ConditionalOnExpression("'${publisher.security.enabled:false}' == 'false' && '${publisher.security.local.enabled:false}' == 'false'")
+    @ConditionalOnProperty(name = "publisher.security.mode", havingValue = "DISABLED", matchIfMissing = true)
     SecurityFilterChain disabledSecurityFilterChain(HttpSecurity http) throws Exception {
         return stateless(http).authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll()).build();
     }
 
     @Bean
-    @ConditionalOnExpression("'${publisher.security.enabled:false}' == 'true' && '${publisher.security.local.enabled:false}' == 'false'")
+    @ConditionalOnProperty(name = "publisher.security.mode", havingValue = "JWT")
     SecurityFilterChain jwtSecurityFilterChain(HttpSecurity http, SecurityProperties properties) throws Exception {
         JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
         authorities.setAuthoritiesClaimName(properties.rolesClaim());
@@ -54,13 +53,13 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(name = "publisher.security.local.enabled", havingValue = "true")
+    @ConditionalOnProperty(name = "publisher.security.mode", havingValue = "LOCAL")
     PasswordEncoder localPasswordEncoder() {
         return new BCryptPasswordEncoder(12);
     }
 
     @Bean
-    @ConditionalOnProperty(name = "publisher.security.local.enabled", havingValue = "true")
+    @ConditionalOnProperty(name = "publisher.security.mode", havingValue = "LOCAL")
     SecurityFilterChain localLoginSecurityFilterChain(HttpSecurity http) throws Exception {
         LoginUrlAuthenticationEntryPoint loginEntryPoint = new LoginUrlAuthenticationEntryPoint("/login");
         return http
@@ -83,7 +82,8 @@ public class SecurityConfiguration {
                         .invalidateHttpSession(true).deleteCookies("JSESSIONID"))
                 .headers(headers -> headers.contentSecurityPolicy(csp -> csp.policyDirectives(
                         "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; "
-                                + "object-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'")))
+                                + "object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                                + "script-src 'self'")))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                         .sessionFixation(fixation -> fixation.migrateSession())
                         .maximumSessions(1).maxSessionsPreventsLogin(false))

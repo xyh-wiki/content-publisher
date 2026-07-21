@@ -10,23 +10,21 @@ import org.springframework.stereotype.Component;
 @Component
 public class RequestActorProvider {
     private final SecurityProperties properties;
-    private final LocalSecurityProperties localProperties;
 
-    public RequestActorProvider(SecurityProperties properties, LocalSecurityProperties localProperties) {
+    public RequestActorProvider(SecurityProperties properties) {
         this.properties = properties;
-        this.localProperties = localProperties;
     }
 
     public ActorContext currentActor() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (localProperties.enabled()) {
+        if (properties.mode() == SecurityMode.LOCAL) {
             if (authentication == null || !authentication.isAuthenticated()
                     || !(authentication.getPrincipal() instanceof LocalUserPrincipal principal)) {
                 throw new AuthenticationCredentialsNotFoundException("请先登录");
             }
             return new ActorContext(principal.tenantId(), principal.username());
         }
-        if (!properties.enabled()) {
+        if (properties.mode() == SecurityMode.DISABLED) {
             return new ActorContext(properties.defaultTenant(), properties.defaultSubject());
         }
         if (!(authentication instanceof JwtAuthenticationToken jwtAuthentication) || !authentication.isAuthenticated()) {

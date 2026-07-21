@@ -3,9 +3,10 @@ package io.contentpublisher.platform.web.security;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("publisher.security")
-public record SecurityProperties(boolean enabled, String tenantClaim, String rolesClaim,
+public record SecurityProperties(SecurityMode mode, String tenantClaim, String rolesClaim,
                                  String defaultTenant, String defaultSubject) {
     public SecurityProperties {
+        mode = mode == null ? SecurityMode.DISABLED : mode;
         tenantClaim = blankToDefault(tenantClaim, "tenant_id");
         rolesClaim = blankToDefault(rolesClaim, "roles");
         defaultTenant = blankToDefault(defaultTenant, "local");
