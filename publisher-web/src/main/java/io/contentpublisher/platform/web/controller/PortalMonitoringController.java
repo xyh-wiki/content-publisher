@@ -189,13 +189,13 @@ public class PortalMonitoringController {
                                       long activeJobs, String rangeLabel) {
         List<MonitorAlert> alerts = new ArrayList<>();
         if (failedJobs > 0) alerts.add(new MonitorAlert("danger", "后台任务失败", failedJobs,
-                rangeLabel + "内存在失败任务，请检查原因", "/projects"));
+                rangeLabel + "内存在失败任务，请检查原因", "/jobs"));
         if (failedPublications > 0) alerts.add(new MonitorAlert("danger", "发布记录失败", failedPublications,
                 rangeLabel + "内存在发布失败，请核对渠道与内容限制", "/publishing"));
         if (disabledAccounts > 0) alerts.add(new MonitorAlert("warning", "渠道账号停用", disabledAccounts,
                 "停用账号不会接收新的自动发布任务", "/channels"));
         if (activeJobs > 0) alerts.add(new MonitorAlert("primary", "任务正在处理", activeJobs,
-                "队列正在推进，页面会自动刷新", "/projects"));
+                "队列正在推进，页面会自动刷新", "/jobs"));
         if (alerts.isEmpty()) alerts.add(new MonitorAlert("success", "当前无运行异常", 0,
                 rangeLabel + "内任务、渠道与发布链路均未发现异常", "/monitoring"));
         return alerts;

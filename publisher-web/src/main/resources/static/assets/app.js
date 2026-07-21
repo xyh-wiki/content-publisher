@@ -7,6 +7,26 @@
         body.classList.remove('sidebar-open');
     }));
 
+    document.querySelectorAll('[data-sidebar-group]').forEach(group => {
+        const toggle = group.querySelector('[data-sidebar-toggle]');
+        const groupName = group.dataset.sidebarGroup;
+        const storageKey = `content-publisher:sidebar:${groupName}`;
+        try {
+            const savedState = window.localStorage.getItem(storageKey);
+            if (savedState !== null) group.classList.toggle('expanded', savedState === 'expanded');
+        } catch (_error) { /* Storage can be disabled by browser policy. */ }
+        const syncState = () => toggle?.setAttribute('aria-expanded', String(group.classList.contains('expanded')));
+        syncState();
+        toggle?.addEventListener('click', () => {
+            group.classList.toggle('expanded');
+            syncState();
+            try {
+                window.localStorage.setItem(storageKey,
+                    group.classList.contains('expanded') ? 'expanded' : 'collapsed');
+            } catch (_error) { /* The menu still works without persisted state. */ }
+        });
+    });
+
     document.querySelectorAll('form[data-confirm]').forEach(form => form.addEventListener('submit', event => {
         if (!window.confirm(form.dataset.confirm || '确认执行此操作？')) event.preventDefault();
     }));
@@ -43,19 +63,16 @@
         const content = document.querySelector(button.dataset.copyContent);
         if (title && content) copy(`${title.value}\n\n${content.value}`, button);
     }));
+    document.querySelectorAll('[data-copy-tags]').forEach(button => button.addEventListener('click', () => {
+        const tags = [...document.querySelectorAll(button.dataset.copyTags)]
+            .map(tag => tag.textContent.trim()).filter(Boolean);
+        if (tags.length) copy(tags.join(' '), button);
+    }));
 
-    const credentialConfig = {
-        DEV: ['API Key'], WORDPRESS: ['用户名', 'Application Password'],
-        DISCOURSE: ['API Key', 'API Username'],
-        GITHUB_DISCUSSIONS: ['Access Token', 'Repository ID', 'Category ID'],
-        X: ['Access Token'], REDDIT: ['Access Token', 'Subreddit'],
-        HASHNODE: ['Access Token', 'Publication ID'], MEDIUM: ['Integration Token', 'Author ID'],
-        MASTODON: ['Access Token'], GHOST: ['Admin API Key']
-    };
     const channelSelect = document.querySelector('[data-channel-select]');
     const credentialFields = [...document.querySelectorAll('[data-credential-field]')];
     const syncCredentials = () => {
-        const labels = credentialConfig[channelSelect?.value] || [];
+        const labels = channelSelect?.selectedOptions[0]?.dataset.credentialLabels?.split('|').filter(Boolean) || [];
         credentialFields.forEach((field, index) => {
             const visible = index < labels.length;
             field.hidden = !visible;
@@ -68,44 +85,6 @@
     if (channelSelect) {
         channelSelect.addEventListener('change', syncCredentials);
         syncCredentials();
-    }
-
-    const sourceWorkspace = document.querySelector('[data-source-workspace]');
-    if (sourceWorkspace) {
-        const tabs = [...sourceWorkspace.querySelectorAll('[data-source-tab]')];
-        const panels = [...sourceWorkspace.querySelectorAll('[data-source-panel]')];
-        const activateSource = source => {
-            const available = tabs.some(tab => tab.dataset.sourceTab === source);
-            const selected = available ? source : sourceWorkspace.dataset.defaultSource;
-            tabs.forEach(tab => {
-                const active = tab.dataset.sourceTab === selected;
-                tab.classList.toggle('active', active);
-                tab.setAttribute('aria-selected', String(active));
-                tab.tabIndex = active ? 0 : -1;
-            });
-            panels.forEach(panel => {
-                panel.hidden = panel.dataset.sourcePanel !== selected;
-            });
-        };
-        tabs.forEach((tab, index) => {
-            tab.addEventListener('click', () => {
-                activateSource(tab.dataset.sourceTab);
-                window.history.replaceState(null, '', `#source-${tab.dataset.sourceTab}`);
-            });
-            tab.addEventListener('keydown', event => {
-                if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
-                event.preventDefault();
-                const nextIndex = event.key === 'ArrowRight'
-                    ? (index + 1) % tabs.length
-                    : (index - 1 + tabs.length) % tabs.length;
-                tabs[nextIndex].focus();
-                tabs[nextIndex].click();
-            });
-        });
-        const hashSource = window.location.hash.startsWith('#source-')
-            ? window.location.hash.replace('#source-', '')
-            : sourceWorkspace.dataset.defaultSource;
-        activateSource(hashSource);
     }
 
     document.querySelectorAll('[data-count-source]').forEach(counter => {
@@ -168,6 +147,10 @@
 
     const jobLive = document.querySelector('[data-job-live]');
     if (jobLive?.dataset.jobActive === 'true') {
+        const jobStatusLabels = {
+            PENDING: '等待执行', RUNNING: '执行中', RETRY_WAIT: '等待重试',
+            SUCCEEDED: '执行成功', FAILED: '执行失败'
+        };
         const progressCard = document.querySelector('.job-progress-card');
         const progressTrack = document.querySelector('.job-progress-track');
         const progressBar = document.querySelector('[data-job-progress-bar]');
@@ -203,7 +186,7 @@
                 if (attempt) attempt.textContent = `${job.attempt}/${job.maxAttempts}`;
                 if (status) {
                     status.className = `status-pill status-${job.status.toLowerCase()}`;
-                    status.textContent = job.status;
+                    status.textContent = jobStatusLabels[job.status] || job.status;
                 }
                 renderProgress(job.progressPercent);
                 if (liveNote) liveNote.textContent = `刚刚同步 · ${new Date().toLocaleTimeString()}`;
@@ -279,5 +262,14 @@
                 // Browsers may deny fullscreen when the page is embedded.
             }
         });
+    }
+
+    if (body.classList.contains('app-page') && !document.querySelector('[data-support-bot]')) {
+        const supportBot = document.createElement('script');
+        supportBot.src = '/support-bot/static/widget.js';
+        supportBot.dataset.apiBase = '/support-bot';
+        supportBot.dataset.supportBot = 'true';
+        supportBot.async = true;
+        document.body.appendChild(supportBot);
     }
 })();

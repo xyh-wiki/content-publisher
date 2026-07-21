@@ -1,42 +1,27 @@
 <!doctype html>
 <html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex,nofollow"><title>项目与内容 · Content Publisher</title>
+    <meta name="robots" content="noindex,nofollow"><title>内容工作台 · Content Publisher</title>
     <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
     <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
 <body class="app-page"><div class="app-layout">
     <aside th:replace="~{fragments/app-shell :: sidebar('projects')}"></aside>
-    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('内容工作台', '创建内容、管理记录并跟踪后台任务')}"></header>
+    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('内容工作台', '从可信来源创建可审核的内容主稿')}"></header>
         <main class="page-content projects-page">
-            <section class="page-header projects-page-header"><div><p class="section-kicker">内容工作区</p><h2>内容工作台</h2>
-                <p>创建入口与记录管理分区呈现，生成、审核、清理和发布路径更加直接。</p></div>
-                <div class="header-actions"><a class="secondary-link" th:if="${canAdmin}" href="#recycle-bin">回收站</a><a class="secondary-link" th:href="@{/publishing}">查看发布进度</a></div></section>
-
-            <div class="workspace-metrics">
-                <div class="workspace-metric"><span class="workspace-metric-icon">◇</span><div><small>Git 项目</small><strong th:text="${projects.size()}">0</strong></div></div>
-                <div class="workspace-metric"><span class="workspace-metric-icon teal">↻</span><div><small>近期任务</small><strong th:text="${jobs.size()}">0</strong></div></div>
-                <div class="workspace-metric"><span class="workspace-metric-icon amber">▤</span><div><small>内容文章</small><strong th:text="${articles.size()}">0</strong></div></div>
-                <div class="workspace-metric"><span class="workspace-metric-icon" th:classappend="${aiEnabled} ? ' teal' : ' muted'">✦</span><div><small>AI 服务</small><strong class="metric-status" th:text="${aiEnabled ? aiModel : '未启用'}">未启用</strong></div></div>
-            </div>
+            <section class="page-header projects-page-header"><div><p class="section-kicker">内容生产</p><h2>选择内容来源</h2>
+                <p>这里只负责导入资料和创建主稿；生成后的内容统一进入内容库审核，再交由发布中心分发。</p></div>
+                <div class="header-actions"><a class="secondary-link" th:href="@{/content}">进入内容库</a></div></section>
 
             <div class="alert error" th:if="${error}" th:text="${error}"></div>
             <div class="alert success" th:if="${success}" th:text="${success}"></div>
             <div class="alert warning" th:if="${!aiEnabled and canAdmin}">AI 内容生成尚未启用。请先前往 <a class="text-link" th:href="@{/settings/ai}">AI 服务</a>配置兼容接口。</div>
             <div class="alert warning" th:if="${!aiEnabled and !canAdmin}">AI 内容生成尚未启用，请联系租户管理员完成配置。</div>
 
-            <section class="source-workspace" th:if="${canEdit}" data-source-workspace th:attr="data-default-source=${activeSourcePanel}">
-                <div class="source-workspace-heading"><div><p class="section-kicker">创建内容</p><h3>创建新内容</h3><p>选择一种来源，仅显示当前需要填写的内容，减少页面滚动和表单干扰。</p></div>
+            <section class="source-workspace" th:if="${canEdit}">
+                <div class="source-workspace-heading"><div><p class="section-kicker">创建内容</p><h3>创建新内容</h3><p>通过左侧二级菜单切换内容来源，当前页面只展示对应的创建表单。</p></div>
                     <span class="service-badge" th:classappend="${aiEnabled} ? ' online' : ' offline'" th:text="${aiEnabled} ? 'AI 已就绪' : 'AI 未配置'">AI 状态</span></div>
-                <div class="source-tabs" role="tablist" aria-label="内容来源">
-                    <button type="button" class="source-tab" th:classappend="${activeSourcePanel == 'git'} ? ' active'" data-source-tab="git" role="tab" aria-controls="source-panel-git" th:attr="aria-selected=${activeSourcePanel == 'git'}">
-                        <span class="source-tab-icon">⌘</span><span><strong>Git 项目</strong><small>导入仓库并分析项目事实</small></span></button>
-                    <button type="button" class="source-tab" th:classappend="${activeSourcePanel == 'topic'} ? ' active'" data-source-tab="topic" role="tab" aria-controls="source-panel-topic" th:attr="aria-selected=${activeSourcePanel == 'topic'}">
-                        <span class="source-tab-icon">✦</span><span><strong>主题教程</strong><small>根据主题、受众和关键词创作</small></span></button>
-                    <button type="button" class="source-tab" th:classappend="${activeSourcePanel == 'website'} ? ' active'" data-source-tab="website" role="tab" aria-controls="source-panel-website" th:attr="aria-selected=${activeSourcePanel == 'website'}">
-                        <span class="source-tab-icon">↗</span><span><strong>网站推荐</strong><small>分析公开网页并生成推荐文章</small></span></button>
-                </div>
 
-                <div id="source-panel-git" class="source-panel" data-source-panel="git" role="tabpanel" th:hidden="${activeSourcePanel != 'git'}">
+                <div id="source-panel-git" class="source-panel" th:if="${activeSourcePanel == 'git'}">
                     <div class="source-panel-intro"><div><p class="section-kicker">仓库导入</p><h3>导入 Git 项目</h3><p>支持允许列表内的 GitHub、GitLab 和 Gitee HTTPS 仓库，导入任务会在后台完成克隆与事实分析。</p></div><span class="service-badge">仅 HTTPS</span></div>
                     <form class="inline-form source-quick-form" th:action="@{/projects/imports}" th:object="${importProjectForm}" method="post">
                         <input type="hidden" th:field="*{idempotencyKey}">
@@ -48,7 +33,7 @@
                     <div class="source-hints"><span>✓ 仓库大小与文件数限制</span><span>✓ 私网地址防护</span><span>✓ 后台任务可恢复</span></div>
                 </div>
 
-                <div id="source-panel-topic" class="source-panel" data-source-panel="topic" role="tabpanel" th:hidden="${activeSourcePanel != 'topic'}">
+                <div id="source-panel-topic" class="source-panel" th:if="${activeSourcePanel == 'topic'}">
                     <div class="source-panel-intro"><div><p class="section-kicker">主题创作</p><h3>按主题创建知识教程</h3><p>定义学习目标与目标受众，系统会生成包含步骤、示例、常见问题和总结的可审核主稿。</p></div><span class="service-badge">AI 辅助</span></div>
                     <form class="stack-form" th:action="@{/articles/topic-generations}" th:object="${topicArticleForm}" method="post">
                         <input type="hidden" th:field="*{idempotencyKey}">
@@ -58,65 +43,37 @@
                         <div class="form-grid three"><div class="field"><label>文章类型</label><select th:field="*{articleType}"><option value="TUTORIAL">分步教程</option><option value="KNOWLEDGE_GUIDE">知识指南</option><option value="BEST_PRACTICES">最佳实践</option><option value="TROUBLESHOOTING">问题排查</option><option value="CONCEPT_EXPLAINER">概念解析</option></select></div>
                             <div class="field"><label>知识层级</label><select th:field="*{knowledgeLevel}"><option value="BEGINNER">入门</option><option value="INTERMEDIATE">进阶</option><option value="ADVANCED">高级</option><option value="MIXED">由浅入深</option></select></div>
                             <div class="field"><label>语言</label><input th:field="*{language}" maxlength="20" required></div></div>
-                        <div class="form-grid"><div class="field"><label>必选关键词</label><textarea th:field="*{keywords}" rows="2" maxlength="3200" placeholder="逗号或换行分隔"></textarea></div>
+                        <div class="form-grid"><div class="field"><label>SEO 必选关键词</label><textarea th:field="*{keywords}" rows="2" maxlength="3200" placeholder="第一项为主关键词，其他用逗号或换行分隔"></textarea><small>系统会围绕主关键词扩展问题型长尾词、场景词和相关实体词。</small></div>
                             <div class="field"><label>参考说明（可选）</label><textarea th:field="*{referenceNotes}" rows="2" maxlength="10000" placeholder="术语、版本范围或内部规范"></textarea></div></div>
-                        <details class="advanced-settings"><summary>高级输出控制</summary><div class="form-grid three section-gap"><div class="field"><label>语气</label><input th:field="*{tone}" maxlength="50" required></div><div class="field"><label>最少字符</label><input th:field="*{minCharacters}" type="number" min="200" max="20000"></div><div class="field"><label>最多字符</label><input th:field="*{maxCharacters}" type="number" min="200" max="20000"></div></div>
-                            <div class="form-grid"><div class="field"><label>关键词上限</label><input th:field="*{maxKeywords}" type="number" min="1" max="30"></div><div class="field"><label>禁用关键词</label><textarea th:field="*{excludedKeywords}" rows="2"></textarea></div></div>
+                        <details class="advanced-settings"><summary>高级输出控制</summary><div class="form-grid three section-gap"><div class="field"><label>语气</label><input th:field="*{tone}" maxlength="50" required></div><div class="field"><label>最少字符</label><input th:field="*{minCharacters}" type="number" min="200" max="3000"></div><div class="field"><label>最多字符</label><input th:field="*{maxCharacters}" type="number" min="200" max="3000"><small>正文最多 3000 字符，建议保持精炼。</small></div></div>
+                            <div class="form-grid"><div class="field"><label>SEO 关键词上限</label><input th:field="*{maxKeywords}" type="number" min="1" max="30"></div><div class="field"><label>禁用关键词</label><textarea th:field="*{excludedKeywords}" rows="2"></textarea></div></div>
                             <div class="field"><label>必选章节</label><textarea th:field="*{requiredSections}" rows="4" maxlength="2200"></textarea></div></details>
                         <div class="form-footer"><small>简报会进入持久化任务，请勿填写密码、Token 或个人敏感信息。</small><button class="primary-button" type="submit" th:disabled="${!aiEnabled}">生成知识教程</button></div>
                     </form>
                 </div>
 
-                <div id="source-panel-website" class="source-panel" data-source-panel="website" role="tabpanel" th:hidden="${activeSourcePanel != 'website'}">
+                <div id="source-panel-website" class="source-panel" th:if="${activeSourcePanel == 'website'}">
                     <div class="source-panel-intro"><div><p class="section-kicker">网站推荐</p><h3>从网站生成推荐文章</h3><p>安全读取公开网页并提炼定位、功能、适用人群、优势与局限，不执行网页中的提示指令。</p></div><span class="service-badge">公网 HTTPS</span></div>
                     <form class="stack-form" th:action="@{/articles/website-generations}" th:object="${websiteArticleForm}" method="post">
                         <input type="hidden" th:field="*{idempotencyKey}">
                         <div class="field"><label>公开网站链接</label><input th:field="*{websiteUrl}" type="url" maxlength="2048" placeholder="https://example.com" required><small>只允许公网 HTTPS；不跟随重定向，不抓取登录后页面。</small></div>
                         <div class="form-grid"><div class="field"><label>推荐角度</label><textarea th:field="*{recommendationAngle}" rows="3" maxlength="2000" placeholder="希望文章重点评价或介绍的方向" required></textarea></div><div class="field"><label>目标受众</label><textarea th:field="*{audience}" rows="3" maxlength="500" placeholder="文章面向的读者群体" required></textarea></div></div>
-                        <div class="form-grid"><div class="field"><label>必选关键词</label><textarea th:field="*{keywords}" rows="2" maxlength="3200" placeholder="逗号或换行分隔"></textarea></div><div class="field"><label>语言</label><input th:field="*{language}" maxlength="20" required></div></div>
-                        <details class="advanced-settings"><summary>高级输出控制</summary><div class="form-grid three section-gap"><div class="field"><label>语气</label><input th:field="*{tone}" maxlength="50" required></div><div class="field"><label>最少字符</label><input th:field="*{minCharacters}" type="number" min="200" max="20000"></div><div class="field"><label>最多字符</label><input th:field="*{maxCharacters}" type="number" min="200" max="20000"></div></div>
-                            <div class="form-grid"><div class="field"><label>关键词上限</label><input th:field="*{maxKeywords}" type="number" min="1" max="30"></div><div class="field"><label>禁用词</label><textarea th:field="*{excludedKeywords}" rows="2"></textarea></div></div><div class="field"><label>必选章节</label><textarea th:field="*{requiredSections}" rows="4"></textarea></div></details>
+                        <div class="form-grid"><div class="field"><label>SEO 必选关键词</label><textarea th:field="*{keywords}" rows="2" maxlength="3200" placeholder="第一项为主关键词，其他用逗号或换行分隔"></textarea><small>建议填写网站名称或核心品类作为主关键词。</small></div><div class="field"><label>语言</label><input th:field="*{language}" maxlength="20" required></div></div>
+                        <details class="advanced-settings"><summary>高级输出控制</summary><div class="form-grid three section-gap"><div class="field"><label>语气</label><input th:field="*{tone}" maxlength="50" required></div><div class="field"><label>最少字符</label><input th:field="*{minCharacters}" type="number" min="200" max="3000"></div><div class="field"><label>最多字符</label><input th:field="*{maxCharacters}" type="number" min="200" max="3000"><small>正文最多 3000 字符，建议保持精炼。</small></div></div>
+                            <div class="form-grid"><div class="field"><label>SEO 关键词上限</label><input th:field="*{maxKeywords}" type="number" min="1" max="30"></div><div class="field"><label>禁用词</label><textarea th:field="*{excludedKeywords}" rows="2"></textarea></div></div><div class="field"><label>必选章节</label><textarea th:field="*{requiredSections}" rows="4"></textarea></div></details>
                         <div class="form-footer"><small>网页只作为不可信资料来源，生成后仍需人工审核。</small><button class="primary-button" type="submit" th:disabled="${!aiEnabled}">分析网站并生成推荐文</button></div>
                     </form>
                 </div>
             </section>
 
-            <section class="records-workspace" aria-labelledby="records-heading">
-                <div class="section-heading"><div><p class="section-kicker">记录管理</p><h2 id="records-heading">内容、任务与项目</h2><p>生成结果和后台任务分区展示。管理员可清理不合理内容；运行中的任务会受到保护。</p></div>
-                    <a class="secondary-link" th:href="@{/publishing}">进入发布中心</a></div>
-
-                <section id="content-records" class="card record-card"><div class="card-header"><div><p class="section-kicker">内容记录</p><h3>已生成内容</h3><p>删除内容时会同时清理历史版本、发布记录和关联的终态任务。</p></div><span class="count-badge" th:text="${articles.size()}">0</span></div>
-                    <div class="empty-state" th:if="${#lists.isEmpty(articles)}">暂无内容记录。可从上方选择来源开始创建。</div>
-                    <div class="table-wrap" th:unless="${#lists.isEmpty(articles)}"><table class="management-table"><thead><tr><th>内容</th><th>来源</th><th>状态</th><th>版本 / 语言</th><th>更新时间</th><th class="table-actions-column">操作</th></tr></thead>
-                        <tbody><tr th:each="article : ${articles}"><td><a class="table-title" th:href="@{/articles/{id}(id=${article.id})}" th:text="${article.title}">标题</a><small class="line-clamp-1" th:text="${article.summary}">摘要</small></td>
-                            <td><span class="source-badge" th:text="${article.sourceType}">TOPIC</span></td><td><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></td>
-                            <td><strong th:text="|v${article.currentVersion}|">v1</strong><small th:text="${article.language}">zh-CN</small></td><td th:text="${article.updatedAt}">time</td>
-                            <td><div class="row-actions"><a class="quiet-button mini-button" th:href="@{/articles/{id}(id=${article.id})}">查看</a>
-                                <form th:if="${canAdmin}" th:action="@{/articles/{id}/delete(id=${article.id})}" method="post" data-confirm="将内容、发布记录和关联终态任务移入回收站，确认继续？"><button class="danger-link mini-button" type="submit">移入回收站</button></form></div></td></tr></tbody></table></div>
-                </section>
-
-                <div class="records-grid">
-                    <section id="job-queue" class="card record-card"><div class="card-header"><div><p class="section-kicker">任务队列</p><h3>近期后台任务</h3><p>执行中任务不可删除；完成或失败任务可清理。</p></div><span class="count-badge" th:text="${jobs.size()}">0</span></div>
-                        <div class="empty-state compact" th:if="${#lists.isEmpty(jobs)}">暂无任务。</div><div class="record-list" th:unless="${#lists.isEmpty(jobs)}">
-                            <div class="record-row" th:each="job : ${jobs}"><a class="record-row-main" th:href="@{/jobs/{id}(id=${job.id})}"><span><strong th:text="${job.type}">TYPE</strong><small th:text="|${job.progressLabel} · ${job.updatedAt}|">time</small></span>
-                                <span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${job.status}">PENDING</span></a>
-                                <form th:if="${canAdmin and !job.status.isActive()}" th:action="@{/jobs/{id}/delete(id=${job.id})}" method="post" data-confirm="确认删除这条终态任务？若它生成了文章，将连同文章及关联记录一起删除。"><button class="icon-danger-button" type="submit" aria-label="删除任务" title="删除任务">×</button></form></div></div>
-                    </section>
-
-                    <section id="project-directory" class="card record-card"><div class="card-header"><div><p class="section-kicker">项目目录</p><h3>已接入 Git 项目</h3><p>按最近更新时间展示仓库状态与技术栈。</p></div><span class="count-badge" th:text="${projects.size()}">0</span></div>
-                        <div class="empty-state compact" th:if="${#lists.isEmpty(projects)}">还没有 Git 项目。</div><div class="record-list" th:unless="${#lists.isEmpty(projects)}">
-                            <a class="record-row record-row-main" th:each="project : ${projects}" th:href="@{/projects/{id}(id=${project.id})}"><span><strong th:text="${project.name}">project</strong><small th:text="${#strings.listJoin(project.languages, ', ') ?: project.gitUrl}">Java</small></span>
-                                <span><span class="status-pill" th:classappend="| status-${project.status.name().toLowerCase()}|" th:text="${project.status}">READY</span><small class="record-time" th:text="${project.updatedAt}">time</small></span></a></div>
-                    </section>
-                </div>
-
-                <section id="recycle-bin" class="card record-card recycle-bin" th:if="${canAdmin}"><div class="card-header"><div><p class="section-kicker">安全恢复</p><h3>回收站</h3><p>删除的内容、发布记录和任务仍保存在数据库中。恢复内容时会同步恢复关联记录。</p></div><span class="count-badge" th:text="${deletedArticles.size() + deletedJobs.size()}">0</span></div>
-                    <div class="empty-state" th:if="${#lists.isEmpty(deletedArticles) and #lists.isEmpty(deletedJobs)}">回收站为空。</div>
-                    <div class="recycle-grid" th:unless="${#lists.isEmpty(deletedArticles) and #lists.isEmpty(deletedJobs)}">
-                        <div><h4>已删除内容</h4><div class="record-list"><div class="record-row" th:each="item : ${deletedArticles}"><span class="record-row-main"><span><strong th:text="${item.title}">标题</strong><small th:text="|${item.deletedBy} · ${item.deletedAt}|">删除信息</small></span><span class="status-pill" th:text="${item.status}">DRAFT</span></span>
-                            <form th:action="@{/articles/{id}/restore(id=${item.id})}" method="post"><button class="secondary-button mini-button" type="submit">恢复</button></form></div><div class="empty-state compact" th:if="${#lists.isEmpty(deletedArticles)}">暂无已删除内容。</div></div></div>
-                        <div><h4>已删除任务</h4><div class="record-list"><div class="record-row" th:each="item : ${deletedJobs}"><span class="record-row-main"><span><strong th:text="${item.title}">任务</strong><small th:text="|${item.deletedBy} · ${item.deletedAt}|">删除信息</small></span><span class="status-pill" th:text="${item.status}">FAILED</span></span>
-                            <form th:action="@{/jobs/{id}/restore(id=${item.id})}" method="post"><button class="secondary-button mini-button" type="submit">恢复</button></form></div><div class="empty-state compact" th:if="${#lists.isEmpty(deletedJobs)}">暂无已删除任务。</div></div></div>
+            <section class="records-workspace" th:if="${activeSourcePanel == 'git'}" aria-labelledby="project-directory-heading">
+                <div class="section-heading"><div><p class="section-kicker">项目资产</p><h2 id="project-directory-heading">已接入 Git 项目</h2><p>仓库导入和项目事实维护归属于 Git 内容来源，其他创作方式不会显示该目录。</p></div>
+                    <span class="count-badge" th:text="${projects.size()}">0</span></div>
+                <section class="card record-card">
+                    <div class="empty-state" th:if="${#lists.isEmpty(projects)}">还没有 Git 项目，可从上方导入仓库。</div>
+                    <div class="record-list" th:unless="${#lists.isEmpty(projects)}">
+                        <a class="record-row record-row-main" th:each="project : ${projects}" th:href="@{/projects/{id}(id=${project.id})}"><span><strong th:text="${project.name}">project</strong><small th:text="${#strings.listJoin(project.languages, ', ') ?: project.gitUrl}">Java</small></span>
+                            <span><span class="status-pill" th:classappend="| status-${project.status.name().toLowerCase()}|" th:text="${project.status}">READY</span><small class="record-time" th:text="${project.updatedAt}">time</small></span></a>
                     </div>
                 </section>
             </section>

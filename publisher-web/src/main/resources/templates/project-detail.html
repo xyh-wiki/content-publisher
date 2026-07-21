@@ -10,7 +10,7 @@
                 <div class="process-item"><span>3</span><div><strong>编辑审核</strong><small>锁定发布版本</small></div></div>
                 <div class="process-item"><span>4</span><div><strong>适配发布</strong><small>分发到各平台</small></div></div></div>
             <section class="page-header"><div><p class="section-kicker">仓库来源</p><h2 th:text="${project.name}">项目</h2><p th:text="${project.description ?: '仓库尚未提供项目描述。'}">描述</p></div>
-                <div class="header-actions"><a class="secondary-link" th:href="@{/projects}">返回项目库</a></div></section>
+                <div class="header-actions"><a class="secondary-link" th:href="@{/projects(source='git')}">返回 Git 项目</a></div></section>
             <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
 
             <section class="card detail-grid"><div><span>分析状态</span><strong class="status-pill" th:classappend="| status-${project.status.name().toLowerCase()}|" th:text="${project.status}">READY</strong></div>
@@ -26,12 +26,12 @@
                     <div class="alert warning" th:if="${project.status.name() != 'READY'}">项目分析成功后才能生成文章。</div>
                     <form class="stack-form" th:if="${canEdit}" th:action="@{/projects/{id}/articles(id=${project.id})}" th:object="${generateArticleForm}" method="post">
                         <input type="hidden" th:field="*{idempotencyKey}"><div class="form-grid three"><div class="field"><label>内容语言</label><input th:field="*{language}" maxlength="20" required></div>
-                            <div class="field"><label>最小字数</label><input th:field="*{minCharacters}" type="number" min="200" max="20000" required></div><div class="field"><label>最大字数</label><input th:field="*{maxCharacters}" type="number" min="200" max="20000" required></div></div>
+                            <div class="field"><label>最小字数</label><input th:field="*{minCharacters}" type="number" min="200" max="3000" required></div><div class="field"><label>最大字数</label><input th:field="*{maxCharacters}" type="number" min="200" max="3000" required><small>正文最多 3000 字符，建议保持精炼。</small></div></div>
                         <div class="field"><label>目标读者与文章语气</label><input th:field="*{tone}" maxlength="50" required><small>例如：面向 Java 后端工程师，专业、客观、突出架构取舍。</small></div>
-                        <div class="form-grid"><div class="field"><label>必须出现的关键词</label><textarea th:field="*{requiredKeywords}" rows="4" placeholder="每行一个或用逗号分隔"></textarea></div>
+                        <div class="form-grid"><div class="field"><label>SEO 必选关键词</label><textarea th:field="*{requiredKeywords}" rows="4" placeholder="每行一个或用逗号分隔"></textarea><small>第一项作为主关键词，其余作为次级关键词和语义覆盖词。</small></div>
                             <div class="field"><label>禁止出现的词语</label><textarea th:field="*{excludedKeywords}" rows="4" placeholder="竞品词、夸张表述或敏感词"></textarea></div></div>
                         <div class="form-grid"><div class="field"><label>必须包含的章节</label><textarea th:field="*{requiredSections}" rows="5"></textarea></div>
-                            <div class="field"><label>关键词数量上限</label><input th:field="*{maxKeywords}" type="number" min="1" max="30" required><small>系统会校验长度、章节、必选词和禁用词，失败时不会创建低质量文章。</small></div></div>
+                            <div class="field"><label>SEO 关键词数量上限</label><input th:field="*{maxKeywords}" type="number" min="1" max="30" required><small>输出主关键词、长尾问题词和场景词；系统同时校验 SEO 结构与关键词前置。</small></div></div>
                         <div class="form-footer"><small>生成任务在后台运行，通常需要数十秒。</small><button class="primary-button" type="submit" th:disabled="${!aiEnabled or project.status.name() != 'READY' or !canEdit}">生成文章主稿</button></div>
                     </form>
                 </section>
@@ -39,7 +39,7 @@
                     <div class="empty-state" th:if="${#lists.isEmpty(articles)}">还没有文章主稿。</div><div class="compact-list" th:unless="${#lists.isEmpty(articles)}">
                         <a class="compact-item" th:each="article : ${articles}" th:href="@{/articles/{id}(id=${article.id})}"><span><strong th:text="${article.title}">标题</strong><small th:text="|v${article.currentVersion} · ${article.language}|">版本</small></span>
                             <span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></a></div></section>
-                    <section class="card"><p class="section-kicker">质量控制</p><h3>输出受控</h3><ul class="checklist"><li>仅基于仓库事实生成</li><li>关键词和章节硬性校验</li><li>生成任务、源版本可追踪</li><li>发布前必须人工审核</li></ul></section></aside>
+                    <section class="card"><p class="section-kicker">质量控制</p><h3>输出受控</h3><ul class="checklist"><li>先识别搜索意图和主关键词</li><li>优化 SEO 标题与 Meta Description</li><li>校验关键词前置、H2/H3 与 FAQ</li><li>生成任务、源版本可追踪</li><li>发布前必须人工审核</li></ul></section></aside>
             </div>
         </main>
     </div></div></body></html>

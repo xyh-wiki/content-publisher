@@ -1,8 +1,12 @@
 package io.contentpublisher.platform.web.error;
 
 import io.contentpublisher.platform.application.ApplicationException;
-import io.contentpublisher.platform.web.controller.PortalManagementController;
+import io.contentpublisher.platform.web.controller.ContentCreationPortalController;
+import io.contentpublisher.platform.web.controller.ContentLibraryPortalController;
+import io.contentpublisher.platform.web.controller.JobPortalController;
 import io.contentpublisher.platform.web.controller.PortalAiSettingsController;
+import io.contentpublisher.platform.web.controller.PortalPublishingController;
+import io.contentpublisher.platform.web.controller.RecycleBinPortalController;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -10,7 +14,14 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.servlet.ModelAndView;
 
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@ControllerAdvice(assignableTypes = {PortalManagementController.class, PortalAiSettingsController.class})
+@ControllerAdvice(assignableTypes = {
+        ContentCreationPortalController.class,
+        ContentLibraryPortalController.class,
+        JobPortalController.class,
+        RecycleBinPortalController.class,
+        PortalPublishingController.class,
+        PortalAiSettingsController.class
+})
 public class PortalExceptionHandler {
     @ExceptionHandler(ApplicationException.class)
     ModelAndView applicationError(ApplicationException exception) {

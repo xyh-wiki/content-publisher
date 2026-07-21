@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><title>回收站 · Content Publisher</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
+<body class="app-page"><div class="app-layout">
+    <aside th:replace="~{fragments/app-shell :: sidebar('recycle')}"></aside>
+    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('回收站', '恢复误删的内容与后台任务记录')}"></header>
+        <main class="page-content">
+            <section class="page-header"><div><p class="section-kicker">数据维护</p><h2>回收站</h2><p>回收站是独立的管理员功能，不参与内容创建、审核或发布流程。</p></div>
+                <div class="header-actions"><a class="secondary-link" th:href="@{/content}">返回内容库</a></div></section>
+            <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
+            <section class="card record-card recycle-bin"><div class="card-header"><div><p class="section-kicker">安全恢复</p><h3>已删除记录</h3><p>恢复内容时会同步恢复关联的发布记录和任务。</p></div><span class="count-badge" th:text="${deletedArticles.size() + deletedJobs.size()}">0</span></div>
+                <div class="empty-state" th:if="${#lists.isEmpty(deletedArticles) and #lists.isEmpty(deletedJobs)}">回收站为空。</div>
+                <div class="recycle-grid" th:unless="${#lists.isEmpty(deletedArticles) and #lists.isEmpty(deletedJobs)}">
+                    <div><h4>已删除内容</h4><div class="record-list"><div class="record-row" th:each="item : ${deletedArticles}"><span class="record-row-main"><span><strong th:text="${item.title}">标题</strong><small th:text="|${item.deletedBy} · ${item.deletedAt}|">删除信息</small></span><span class="status-pill" th:text="${item.status}">DRAFT</span></span>
+                        <form th:action="@{/articles/{id}/restore(id=${item.id})}" method="post"><button class="secondary-button mini-button" type="submit">恢复</button></form></div><div class="empty-state compact" th:if="${#lists.isEmpty(deletedArticles)}">暂无已删除内容。</div></div></div>
+                    <div><h4>已删除任务</h4><div class="record-list"><div class="record-row" th:each="item : ${deletedJobs}"><span class="record-row-main"><span><strong th:text="${item.title}">任务</strong><small th:text="|${item.deletedBy} · ${item.deletedAt}|">删除信息</small></span><span class="status-pill" th:text="${item.status}">FAILED</span></span>
+                        <form th:action="@{/jobs/{id}/restore(id=${item.id})}" method="post"><button class="secondary-button mini-button" type="submit">恢复</button></form></div><div class="empty-state compact" th:if="${#lists.isEmpty(deletedJobs)}">暂无已删除任务。</div></div></div>
+                </div>
+            </section>
+        </main>
+    </div>
+</div></body></html>

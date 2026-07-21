@@ -155,9 +155,13 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get("/projects").session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("导入 Git 项目")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-source-workspace")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("从网站生成推荐文章")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/projects?source=website")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("主题教程")));
+
+        mockMvc.perform(get("/projects").param("source", "git").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("导入 Git 项目")));
 
         mockMvc.perform(post("/projects/imports").session(session)
                         .param("gitUrl", "https://github.com/contentpublisher/portal-test.git")
@@ -176,14 +180,43 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get(submitted.getResponse().getRedirectedUrl()).session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("任务正在后台执行")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("任务正在后台执行")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("入队时间")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("幂等键"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("结果资源"))));
+    }
+
+    @Test
+    void shouldSeparateContentJobsAndRecycleBinFromCreationWorkspace() throws Exception {
+        MockHttpSession session = login();
+
+        mockMvc.perform(get("/projects").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("选择内容来源")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-sidebar-group=\"content\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-sidebar-toggle")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("近期后台任务"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("已删除记录"))));
+        mockMvc.perform(get("/content").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("文章主稿")));
+        mockMvc.perform(get("/jobs").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("任务队列")));
+        mockMvc.perform(get("/recycle-bin").session(session))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("已删除记录")));
     }
 
     @Test
     void shouldSubmitTopicTutorialGenerationFromManagementPortal() throws Exception {
         MockHttpSession session = login();
 
-        mockMvc.perform(get("/projects").session(session))
+        mockMvc.perform(get("/projects").param("source", "topic").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("按主题创建知识教程")));
 
@@ -197,7 +230,7 @@ class LocalSecurityIntegrationTest {
                         .param("language", "zh-CN")
                         .param("tone", "专业、清晰、循序渐进")
                         .param("minCharacters", "1200")
-                        .param("maxCharacters", "4000")
+                        .param("maxCharacters", "1800")
                         .param("maxKeywords", "8")
                         .param("requiredSections", "学习目标\n分步教程\n常见问题\n总结")
                         .param("idempotencyKey", "portal:topic:test-001"))
@@ -207,7 +240,7 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get(submitted.getResponse().getRedirectedUrl()).session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("GENERATE_TOPIC_ARTICLE")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("生成主题教程")));
     }
 
     @Test
@@ -226,7 +259,7 @@ class LocalSecurityIntegrationTest {
                         .param("language", "zh-CN")
                         .param("tone", "客观、克制、信息密度高")
                         .param("minCharacters", "1000")
-                        .param("maxCharacters", "3500")
+                        .param("maxCharacters", "2200")
                         .param("maxKeywords", "8")
                         .param("excludedKeywords", "最好,第一,保证")
                         .param("requiredSections", "网站定位\n核心功能\n适用人群\n优势与局限\n总结")
@@ -237,7 +270,7 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get(submitted.getResponse().getRedirectedUrl()).session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("GENERATE_WEBSITE_ARTICLE")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("生成网站推荐")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("任务进度")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-job-status-url")));
     }
@@ -276,6 +309,7 @@ class LocalSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("企业级管理后台")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("企业级内容平台教程")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("SEO 质量检查")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("版本 2")));
 
         assertThat(articles.findArticleById("tenant-local", articleId)).get().satisfies(saved -> {
@@ -349,6 +383,10 @@ class LocalSecurityIntegrationTest {
         mockMvc.perform(get("/publishing").session(session)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("多平台发布中心")));
         mockMvc.perform(get("/articles/" + articleId).session(session)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("进入发布中心")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("一键多平台发布"))));
+        mockMvc.perform(get("/publishing/articles/" + articleId).session(session)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("一键多平台发布")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEV 主账号")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("X 主账号")));
@@ -357,7 +395,7 @@ class LocalSecurityIntegrationTest {
                         .param("canonicalUrl", "https://example.com/original")
                         .param("idempotencyKey", "portal-publication-batch-001"))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/articles/" + articleId));
+                .andExpect(redirectedUrl("/publishing/articles/" + articleId));
 
         assertThat(jobRepository.findRecentJobs("tenant-local", 100).stream()
                 .filter(job -> job.payload() instanceof JobPayload.PublishArticle payload
@@ -375,6 +413,9 @@ class LocalSecurityIntegrationTest {
         mockMvc.perform(get("/articles/" + articleId + "/manual/XIAOHONGSHU").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("打开官方登录/发布页")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("发布标签")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("#java")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("#发布")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("PLAIN_TEXT")));
 
         mockMvc.perform(post("/articles/" + articleId + "/manual/XIAOHONGSHU").session(session).with(csrf())
@@ -383,7 +424,7 @@ class LocalSecurityIntegrationTest {
                         .param("content", "适配后的普通文本 #Java #发布")
                         .param("externalUrl", "https://www.xiaohongshu.com/explore/test-article"))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/articles/" + articleId));
+                .andExpect(redirectedUrl("/publishing/articles/" + articleId));
 
         assertThat(manualPublications.findByArticle("tenant-local", articleId)).singleElement()
                 .satisfies(item -> assertThat(item.adaptedTitle()).isEqualTo("小红书发布标题"));
@@ -446,6 +487,9 @@ class LocalSecurityIntegrationTest {
                     .andExpect(status().is3xxRedirection())
                     .andExpect(redirectedUrl("/access-denied"));
             mockMvc.perform(get("/settings/ai").session(session))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/access-denied"));
+            mockMvc.perform(get("/recycle-bin").session(session))
                     .andExpect(status().is3xxRedirection())
                     .andExpect(redirectedUrl("/access-denied"));
         } finally {

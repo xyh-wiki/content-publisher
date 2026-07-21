@@ -115,13 +115,14 @@ public class SecurityConfiguration {
     private void protectedRequests(
             AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry authorize) {
         authorize.requestMatchers("/settings/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/recycle-bin").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/channels").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/delete", "/jobs/*/delete").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/restore", "/jobs/*/restore").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/articles/*", "/api/v1/jobs/*").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/articles/*/restore", "/api/v1/jobs/*/restore")
                     .hasRole("ADMIN")
-                .requestMatchers(HttpMethod.GET, "/channels", "/publishing")
+                .requestMatchers(HttpMethod.GET, "/channels", "/publishing/**")
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/publications",
                         "/articles/*/publication-batches", "/articles/*/manual/**",
@@ -137,7 +138,7 @@ public class SecurityConfiguration {
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/website-generations")
                     .hasAnyRole("EDITOR", "ADMIN")
-                .requestMatchers(HttpMethod.GET, "/projects/**", "/jobs/**", "/articles/**")
+                .requestMatchers(HttpMethod.GET, "/projects/**", "/content", "/jobs/**", "/articles/**")
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/channel-accounts/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/channel-accounts/**").hasRole("ADMIN")

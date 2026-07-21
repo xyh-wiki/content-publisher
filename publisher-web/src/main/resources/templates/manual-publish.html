@@ -8,13 +8,16 @@
             <div class="process-item done"><span>✓</span><div><strong>平台适配</strong><small th:text="${channel.contentHint()}">内容已生成</small></div></div>
             <div class="process-item active"><span>3</span><div><strong>登录发布</strong><small>在官方创作页操作</small></div></div><div class="process-item"><span>4</span><div><strong>结果回填</strong><small>保存外链与快照</small></div></div></div>
             <section class="page-header"><div><p class="section-kicker">人工发布</p><h2 th:text="|发布到 ${channel.displayName()}|">发布平台</h2><p th:text="|源内容：${article.title} · 主稿 v${article.currentVersion}|">source</p></div>
-                <div class="header-actions"><a class="secondary-link" th:href="@{/articles/{id}(id=${article.id})}">返回文章</a></div></section>
+                <div class="header-actions"><a class="secondary-link" th:href="@{/publishing/articles/{id}(id=${article.id})}">返回文章发布</a></div></section>
             <div class="alert error" th:if="${error}" th:text="${error}"></div>
             <form th:action="@{/articles/{id}/manual/{type}(id=${article.id},type=${channel.type()})}" th:object="${manualPublicationForm}" method="post">
                 <input type="hidden" th:field="*{contentFormat}"><div class="manual-editor-grid"><section class="card"><div class="card-header"><div><p class="section-kicker">渠道版本</p><h3>平台专用版本</h3><p>可以在发布前继续调整；最终提交时保存的是当前文本快照。</p></div><span class="format-badge" th:text="${channel.contentFormat()}">MARKDOWN</span></div>
                     <div class="copy-toolbar"><button class="copy-button" type="button" data-copy-target="#manual-title">复制标题</button><button class="copy-button" type="button" data-copy-target="#manual-content">复制正文</button>
                         <button class="copy-button" type="button" data-copy-combined data-copy-title="#manual-title" data-copy-content="#manual-content">复制全部</button></div>
                     <div class="stack-form section-gap"><div class="field"><label>平台标题</label><input id="manual-title" th:field="*{title}" maxlength="500" required><small class="character-counter" data-count-source="#manual-title">0</small></div>
+                        <div class="field"><div class="manual-tag-heading"><label>发布标签</label><button class="copy-button" type="button" data-copy-tags="#manual-publish-tags .tag" th:unless="${#lists.isEmpty(adapted.tags())}">复制标签</button></div>
+                            <div id="manual-publish-tags" class="manual-tag-panel"><div class="tag-row" th:unless="${#lists.isEmpty(adapted.tags())}"><span class="tag" th:each="tag : ${adapted.tags()}" th:text="|#${tag}|">#标签</span></div><span class="manual-tag-empty" th:if="${#lists.isEmpty(adapted.tags())}">暂无生成标签</span></div>
+                            <small>来自文章生成结果，并已按当前发布平台的规则完成适配。</small></div>
                         <div class="field"><label>平台正文</label><textarea id="manual-content" th:field="*{content}" rows="28" maxlength="100000" required></textarea><small class="character-counter" data-count-source="#manual-content" th:attr="data-count-limit=${channel.characterLimit()}">0</small><small>系统保留完整正文，不再自动截断；超过平台建议上限时，请在发布前按平台要求调整。</small></div>
                         <div class="field"><label>发布后的文章链接</label><div class="url-validation-row"><input id="manual-external-url" th:field="*{externalUrl}" type="url" maxlength="2048" placeholder="完成发布后，将平台文章 URL 粘贴到这里" required>
                             <button class="secondary-button" type="button" data-validate-published-url th:attr="data-validation-url=@{/api/v1/publications/link-validation},data-channel-type=${channel.type()}">验证链接</button></div>

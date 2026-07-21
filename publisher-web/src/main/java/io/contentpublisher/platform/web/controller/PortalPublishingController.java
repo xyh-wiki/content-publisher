@@ -6,6 +6,8 @@ import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.PublicationRecord;
+import io.contentpublisher.platform.domain.Article;
+import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
 import io.contentpublisher.platform.domain.PublicationStatus;
 import io.contentpublisher.platform.web.form.CreateChannelAccountForm;
@@ -93,6 +95,27 @@ public class PortalPublishingController {
         return "publishing";
     }
 
+    @GetMapping("/publishing/articles/{articleId}")
+    public String articlePublishing(@PathVariable UUID articleId, Model model) {
+        var actor = actors.currentActor();
+        Article article = publishing.getArticle(actor, articleId);
+        model.addAttribute("article", article);
+        BatchPublishArticleForm form = new BatchPublishArticleForm();
+        form.setIdempotencyKey(idempotencyKey("publish-batch"));
+        model.addAttribute("batchPublishArticleForm", form);
+        model.addAttribute("channelAccounts", publishing.listAccounts(actor).stream()
+                .filter(account -> account.status() == ChannelAccountStatus.ACTIVE)
+                .map(ChannelAccountView::from).toList());
+        model.addAttribute("manualTargets", ChannelCatalog.all().stream()
+                .filter(ChannelCatalog.ChannelDefinition::manualAvailable).toList());
+        model.addAttribute("publicationRecords", publishing.getArticlePublicationRecords(actor, articleId));
+        model.addAttribute("channelNames", channelNames());
+        Map<ChannelType, ChannelCatalog.ChannelRegion> channelRegions = new java.util.EnumMap<>(ChannelType.class);
+        ChannelCatalog.all().forEach(channel -> channelRegions.put(channel.type(), channel.region()));
+        model.addAttribute("channelRegions", channelRegions);
+        return "article-publishing";
+    }
+
     @GetMapping("/channels")
     public String channels(Model model) {
         if (!model.containsAttribute("channelAccountForm")) {
@@ -131,7 +154,7 @@ public class PortalPublishingController {
                                RedirectAttributes redirectAttributes) {
         if (bindingResult.hasErrors()) {
             redirectAttributes.addFlashAttribute("error", firstError(bindingResult));
-            return "redirect:/articles/" + articleId;
+            return "redirect:/publishing/articles/" + articleId;
         }
         try {
             var job = jobs.submitPublication(actors.currentActor(), articleId, form.getChannelAccountId(),
@@ -139,7 +162,7 @@ public class PortalPublishingController {
             return "redirect:/jobs/" + job.id();
         } catch (ApplicationException | IllegalArgumentException exception) {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
-            return "redirect:/articles/" + articleId;
+            return "redirect:/publishing/articles/" + articleId;
         }
     }
 
@@ -150,7 +173,7 @@ public class PortalPublishingController {
                                RedirectAttributes redirectAttributes) {
         if (bindingResult.hasErrors()) {
             redirectAttributes.addFlashAttribute("error", firstError(bindingResult));
-            return "redirect:/articles/" + articleId;
+            return "redirect:/publishing/articles/" + articleId;
         }
         try {
             var submitted = jobs.submitPublications(actors.currentActor(), articleId, form.getChannelAccountIds(),
@@ -159,7 +182,7 @@ public class PortalPublishingController {
         } catch (ApplicationException | IllegalArgumentException exception) {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
         }
-        return "redirect:/articles/" + articleId;
+        return "redirect:/publishing/articles/" + articleId;
     }
 
     @PostMapping("/jobs/{jobId}/publication-retry")
@@ -192,7 +215,7 @@ public class PortalPublishingController {
             adapted = publishing.adaptContent(actor, articleId, channelType, null);
         } catch (ApplicationException exception) {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
-            return "redirect:/articles/" + articleId;
+            return "redirect:/publishing/articles/" + articleId;
         }
         if (!model.containsAttribute("manualPublicationForm")) {
             ManualPublicationForm form = new ManualPublicationForm();
@@ -221,7 +244,7 @@ public class PortalPublishingController {
             publishing.completeManualPublication(actors.currentActor(), articleId, channelType, form.getTitle(),
                     form.getContent(), form.getContentFormat(), form.getExternalUrl());
             redirectAttributes.addFlashAttribute("success", "人工发布结果已记录，内容快照和外链已留档");
-            return "redirect:/articles/" + articleId;
+            return "redirect:/publishing/articles/" + articleId;
         } catch (ApplicationException | IllegalArgumentException exception) {
             model.addAttribute("error", exception.getMessage());
             return manualPublish(articleId, channelType, model, redirectAttributes);
@@ -237,30 +260,12 @@ public class PortalPublishingController {
     }
 
     private Map<String, String> credentials(CreateChannelAccountForm form) {
-        List<String> keys = credentialKeys(form.getType());
+        List<String> keys = ChannelCatalog.definition(form.getType()).credentialKeys();
         List<String> values = List.of(value(form.getCredentialOne()), value(form.getCredentialTwo()),
                 value(form.getCredentialThree()));
         Map<String, String> credentials = new LinkedHashMap<>();
         for (int index = 0; index < keys.size(); index++) credentials.put(keys.get(index), values.get(index));
         return credentials;
-    }
-
-    private List<String> credentialKeys(ChannelType type) {
-        return switch (type) {
-            case DEV -> List.of("apiKey");
-            case WORDPRESS -> List.of("username", "applicationPassword");
-            case DISCOURSE -> List.of("apiKey", "apiUsername");
-            case GITHUB_DISCUSSIONS -> List.of("token", "repositoryId", "categoryId");
-            case X -> List.of("accessToken");
-            case REDDIT -> List.of("accessToken", "subreddit");
-            case HASHNODE -> List.of("token", "publicationId");
-            case MEDIUM -> List.of("token", "authorId");
-            case MASTODON -> List.of("accessToken");
-            case GHOST -> List.of("adminApiKey");
-            case XIAOHONGSHU, CSDN, JUEJIN, ZHIHU, CNBLOGS, SEGMENTFAULT, V2EX, OSCHINA,
-                    LINKEDIN, WECHAT_OFFICIAL, JIANSHU, TOUTIAO, BILIBILI_COLUMN, BLOG_51CTO,
-                    TENCENT_CLOUD, ALIBABA_CLOUD, HUAWEI_CLOUD -> List.of();
-        };
     }
 
     private Map<ChannelType, String> channelNames() {

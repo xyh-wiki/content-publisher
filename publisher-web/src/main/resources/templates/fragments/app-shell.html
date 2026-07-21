@@ -15,18 +15,47 @@
         <a th:href="@{/}" th:classappend="${active == 'dashboard'} ? ' active'">
             <span class="nav-icon">⌂</span><span>总览</span>
         </a>
-        <a th:href="@{/monitoring}" th:classappend="${active == 'monitoring'} ? ' active'">
-            <span class="nav-icon">▦</span><span>监控大屏</span>
+
+        <p>内容生产</p>
+        <div class="sidebar-nav-group" data-sidebar-group="content" th:classappend="${active == 'projects'} ? ' expanded'">
+            <div class="sidebar-nav-row"><a th:href="@{/projects}" th:classappend="${active == 'projects'} ? ' active'">
+                <span class="nav-icon">◇</span><span>内容工作台</span></a>
+                <button class="sidebar-nav-toggle" type="button" data-sidebar-toggle aria-controls="sidebar-content-subnav" th:attr="aria-expanded=${active == 'projects'}" aria-label="展开或收起内容工作台子菜单"><span>⌄</span></button></div>
+            <div id="sidebar-content-subnav" class="sidebar-subnav" aria-label="内容工作台子菜单">
+                <a th:href="@{/projects(source='website')}" th:classappend="${active == 'projects' and activeSourcePanel == 'website'} ? ' active'">网站推荐</a>
+                <a th:href="@{/projects(source='git')}" th:classappend="${active == 'projects' and activeSourcePanel == 'git'} ? ' active'">Git 项目</a>
+                <a th:href="@{/projects(source='topic')}" th:classappend="${active == 'projects' and activeSourcePanel == 'topic'} ? ' active'">主题教程</a>
+            </div>
+        </div>
+        <a th:href="@{/content}" th:classappend="${active == 'content'} ? ' active'">
+            <span class="nav-icon">▤</span><span>内容库</span>
         </a>
-        <a th:href="@{/projects}" th:classappend="${active == 'projects'} ? ' active'">
-            <span class="nav-icon">◇</span><span>内容工作台</span>
+
+        <p>发布管理</p>
+        <div class="sidebar-nav-group" data-sidebar-group="publishing" th:classappend="${active == 'publishing' or active == 'channels'} ? ' expanded'">
+            <div class="sidebar-nav-row"><a th:href="@{/publishing}" th:classappend="${active == 'publishing' or active == 'channels'} ? ' active'">
+                <span class="nav-icon">↗</span><span>发布中心</span></a>
+                <button class="sidebar-nav-toggle" type="button" data-sidebar-toggle aria-controls="sidebar-publishing-subnav" th:attr="aria-expanded=${active == 'publishing' or active == 'channels'}" aria-label="展开或收起发布管理子菜单"><span>⌄</span></button></div>
+            <div id="sidebar-publishing-subnav" class="sidebar-subnav" aria-label="发布管理子菜单">
+                <a th:href="@{/publishing}" th:classappend="${active == 'publishing'} ? ' active'">发布记录</a>
+                <a th:href="@{/channels}" th:classappend="${active == 'channels'} ? ' active'">渠道管理</a>
+            </div>
+        </div>
+
+        <p>运行维护</p>
+        <div class="sidebar-nav-group" data-sidebar-group="operations" th:classappend="${active == 'monitoring' or active == 'jobs'} ? ' expanded'">
+            <div class="sidebar-nav-row"><a th:href="@{/monitoring}" th:classappend="${active == 'monitoring' or active == 'jobs'} ? ' active'">
+                <span class="nav-icon">▦</span><span>运行中心</span></a>
+                <button class="sidebar-nav-toggle" type="button" data-sidebar-toggle aria-controls="sidebar-operations-subnav" th:attr="aria-expanded=${active == 'monitoring' or active == 'jobs'}" aria-label="展开或收起运行维护子菜单"><span>⌄</span></button></div>
+            <div id="sidebar-operations-subnav" class="sidebar-subnav" aria-label="运行维护子菜单">
+                <a th:href="@{/monitoring}" th:classappend="${active == 'monitoring'} ? ' active'">监控大屏</a>
+                <a th:href="@{/jobs}" th:classappend="${active == 'jobs'} ? ' active'">任务队列</a>
+            </div>
+        </div>
+        <a th:if="${canAdmin}" th:href="@{/recycle-bin}" th:classappend="${active == 'recycle'} ? ' active'">
+            <span class="nav-icon">♲</span><span>回收站</span>
         </a>
-        <a th:href="@{/publishing}" th:classappend="${active == 'publishing'} ? ' active'">
-            <span class="nav-icon">↗</span><span>发布中心</span>
-        </a>
-        <a th:href="@{/channels}" th:classappend="${active == 'channels'} ? ' active'">
-            <span class="nav-icon">◎</span><span>渠道管理</span>
-        </a>
+
         <p>系统设置</p>
         <a th:if="${canAdmin}" th:href="@{/settings/ai}" th:classappend="${active == 'ai'} ? ' active'">
             <span class="nav-icon">✦</span><span>AI 服务</span>
