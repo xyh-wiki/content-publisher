@@ -196,7 +196,10 @@ class LocalSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("选择内容来源")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-sidebar-group=\"content\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("data-sidebar-active=\"true\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("data-sidebar-toggle")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-controls=\"app-sidebar\"")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("aria-current=\"page\"")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("近期后台任务"))))
                 .andExpect(content().string(org.hamcrest.Matchers.not(

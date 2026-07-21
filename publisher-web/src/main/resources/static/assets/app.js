@@ -1,29 +1,107 @@
 (() => {
     const body = document.body;
-    document.querySelectorAll('[data-sidebar-open]').forEach(button => button.addEventListener('click', () => {
-        body.classList.add('sidebar-open');
-    }));
-    document.querySelectorAll('[data-sidebar-close]').forEach(button => button.addEventListener('click', () => {
-        body.classList.remove('sidebar-open');
-    }));
+    const sidebar = document.querySelector('.app-sidebar');
+    const sidebarOpeners = [...document.querySelectorAll('[data-sidebar-open]')];
+    const sidebarClosers = [...document.querySelectorAll('[data-sidebar-close]')];
+    const sidebarMedia = window.matchMedia('(max-width: 820px)');
+    let sidebarOpener = null;
+    let sidebarBackdrop = null;
 
-    document.querySelectorAll('[data-sidebar-group]').forEach(group => {
-        const toggle = group.querySelector('[data-sidebar-toggle]');
-        const groupName = group.dataset.sidebarGroup;
-        const storageKey = `content-publisher:sidebar:${groupName}`;
+    if (sidebar) {
+        sidebarBackdrop = document.createElement('button');
+        sidebarBackdrop.type = 'button';
+        sidebarBackdrop.tabIndex = -1;
+        sidebarBackdrop.className = 'sidebar-backdrop';
+        sidebarBackdrop.setAttribute('aria-label', '关闭导航');
+        sidebar.insertAdjacentElement('afterend', sidebarBackdrop);
+    }
+
+    const syncSidebarAccessibility = () => {
+        if (!sidebar) return;
+        const mobileOpen = sidebarMedia.matches && body.classList.contains('sidebar-open');
+        sidebarOpeners.forEach(button => button.setAttribute('aria-expanded', String(mobileOpen)));
+        if (sidebarMedia.matches) {
+            sidebar.setAttribute('aria-hidden', String(!mobileOpen));
+            if ('inert' in sidebar) sidebar.inert = !mobileOpen;
+        } else {
+            sidebar.removeAttribute('aria-hidden');
+            if ('inert' in sidebar) sidebar.inert = false;
+        }
+    };
+    const closeSidebar = (restoreFocus = false) => {
+        body.classList.remove('sidebar-open');
+        syncSidebarAccessibility();
+        if (restoreFocus) sidebarOpener?.focus();
+    };
+    const openSidebar = button => {
+        sidebarOpener = button;
+        body.classList.add('sidebar-open');
+        syncSidebarAccessibility();
+        sidebarClosers[0]?.focus();
+    };
+
+    sidebarOpeners.forEach(button => button.addEventListener('click', () => openSidebar(button)));
+    sidebarClosers.forEach(button => button.addEventListener('click', () => closeSidebar(true)));
+    sidebarBackdrop?.addEventListener('click', () => closeSidebar(true));
+    sidebar?.querySelectorAll('a[href]').forEach(link => link.addEventListener('click', () => {
+        if (sidebarMedia.matches) closeSidebar(false);
+    }));
+    document.addEventListener('keydown', event => {
+        if (!sidebarMedia.matches || !body.classList.contains('sidebar-open') || !sidebar) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeSidebar(true);
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const focusable = [...sidebar.querySelectorAll('a[href], button:not([disabled]), input:not([disabled])')]
+            .filter(element => element.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+    const handleSidebarViewport = () => {
+        if (!sidebarMedia.matches) body.classList.remove('sidebar-open');
+        syncSidebarAccessibility();
+    };
+    if (sidebarMedia.addEventListener) sidebarMedia.addEventListener('change', handleSidebarViewport);
+    else sidebarMedia.addListener(handleSidebarViewport);
+    syncSidebarAccessibility();
+
+    const sidebarGroups = [...document.querySelectorAll('[data-sidebar-group]')];
+    const activeSidebarGroup = sidebarGroups.find(group => group.dataset.sidebarActive === 'true');
+    const readSidebarGroupState = group => {
+        try { return window.localStorage.getItem(`content-publisher:sidebar:${group.dataset.sidebarGroup}`); }
+        catch (_error) { return null; }
+    };
+    const setSidebarGroupState = (group, expanded, persist = false) => {
+        group.classList.toggle('expanded', expanded);
+        group.querySelector('[data-sidebar-toggle]')?.setAttribute('aria-expanded', String(expanded));
+        group.querySelector('.sidebar-subnav')?.setAttribute('aria-hidden', String(!expanded));
+        if (!persist) return;
         try {
-            const savedState = window.localStorage.getItem(storageKey);
-            if (savedState !== null) group.classList.toggle('expanded', savedState === 'expanded');
-        } catch (_error) { /* Storage can be disabled by browser policy. */ }
-        const syncState = () => toggle?.setAttribute('aria-expanded', String(group.classList.contains('expanded')));
-        syncState();
-        toggle?.addEventListener('click', () => {
-            group.classList.toggle('expanded');
-            syncState();
-            try {
-                window.localStorage.setItem(storageKey,
-                    group.classList.contains('expanded') ? 'expanded' : 'collapsed');
-            } catch (_error) { /* The menu still works without persisted state. */ }
+            window.localStorage.setItem(`content-publisher:sidebar:${group.dataset.sidebarGroup}`,
+                expanded ? 'expanded' : 'collapsed');
+        } catch (_error) { /* The menu still works without persisted state. */ }
+    };
+    const savedSidebarGroup = activeSidebarGroup ? null
+        : sidebarGroups.find(group => readSidebarGroupState(group) === 'expanded');
+    sidebarGroups.forEach(group => {
+        setSidebarGroupState(group, group === activeSidebarGroup || group === savedSidebarGroup);
+        group.querySelector('[data-sidebar-toggle]')?.addEventListener('click', () => {
+            const shouldExpand = !group.classList.contains('expanded');
+            if (shouldExpand) {
+                sidebarGroups.filter(candidate => candidate !== group)
+                    .forEach(candidate => setSidebarGroupState(candidate, false, true));
+            }
+            setSidebarGroupState(group, shouldExpand, true);
         });
     });
 
