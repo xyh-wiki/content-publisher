@@ -2,7 +2,7 @@
 
 ## 1. 技术目标
 
-项目采用模块化单体架构，在保持部署简单的同时，将领域、应用用例和外部技术适配器隔离。当前架构已承载管理工作台和 10 个发布渠道，并为任务扩容和更多合规渠道预留稳定边界。
+项目采用模块化单体架构，在保持部署简单的同时，将领域、应用用例和外部技术适配器隔离。当前架构已承载管理工作台、10 个 API 发布渠道和 17 个人工发布渠道，并为任务扩容和更多合规渠道预留稳定边界。
 
 技术原则：
 
@@ -61,13 +61,16 @@
 
 | 能力 | 代码位置 |
 |---|---|
-| 项目与文章用例 | `publisher-application/.../ProjectApplicationService.java` |
+| 项目查询门面 | `publisher-application/.../ProjectApplicationService.java` |
+| 项目导入 | `publisher-application/.../ProjectImportApplicationService.java` |
+| 内容生成 | `publisher-application/.../ContentGenerationApplicationService.java` |
 | 任务提交用例 | `publisher-application/.../JobApplicationService.java` |
 | 安全 Git 分析 | `publisher-infrastructure/.../git/SecureJGitRepositoryInspector.java` |
 | AI 生成与校验 | `publisher-infrastructure/.../ai/OpenAiCompatibleContentGenerator.java` |
-| JPA 持久化 | `publisher-infrastructure/.../persistence/JpaPublisherPersistenceAdapter.java` |
-| 持久化任务工作器 | `publisher-infrastructure/.../jobs/DurableJobWorker.java` |
-| 发布应用服务 | `publisher-application/.../PublishingApplicationService.java` |
+| JPA 持久化 | `publisher-infrastructure/.../persistence/Jpa*PersistenceAdapter.java` |
+| 持久化任务工作器 | `publisher-infrastructure/.../jobs/DurableJobWorker.java`、`JobHandler.java` |
+| 发布稳定门面 | `publisher-application/.../PublishingApplicationService.java` |
+| 发布子用例 | `ChannelAccountApplicationService`、`ArticleEditorialApplicationService`、`PublicationCommandApplicationService`、`PublicationQueryApplicationService` |
 | 凭据加密 | `publisher-infrastructure/.../channels/AesGcmCredentialVault.java` |
 | 渠道地址安全策略 | `publisher-infrastructure/.../channels/SecureChannelEndpointPolicy.java` |
 | 渠道发布适配器 | `publisher-infrastructure/.../channels/*ChannelPublisher.java` |
@@ -77,6 +80,8 @@
 | 任务 API | `publisher-web/.../controller/JobController.java` |
 
 所有 Java 包以 `io.contentpublisher.platform` 开头。
+
+Web 管理入口同样按职责拆分：内容创建、内容库、任务队列、回收站和发布中心分别由独立 Portal Controller 负责。稳定门面只用于保持 API 兼容和协调子用例，不承载新的业务分支。
 
 ## 5. 领域模型
 
@@ -137,6 +142,8 @@
 
 - `JobPayload.ImportProject`
 - `JobPayload.GenerateArticle`
+- `JobPayload.GenerateTopicArticle`
+- `JobPayload.GenerateWebsiteArticle`
 - `JobPayload.PublishArticle`
 
 Job 保存租户、原操作者、类型、状态、请求哈希、尝试次数、调度时间、租约、结果 ID 和有限错误信息。
@@ -174,12 +181,16 @@ Client
 Worker
   → 读取 RepositorySnapshot
   → 构建系统提示词、约束和不可信仓库边界
+  → 确定主关键词、候选关键词、搜索意图和目标受众
   → 调用 OpenAI 兼容接口
   → 解析 JSON
-  → 执行长度/关键词/章节/禁用词校验
+  → 收紧中英文摘要和英文轻微超限正文
+  → 执行长度/关键词前置/SEO 标题/H2 层级/章节/禁用词校验
   → 按 generation_job_id 幂等保存 DRAFT Article
   → Job 标记 SUCCEEDED 并保存 Article ID
 ```
+
+SEO 规则由服务端统一注入 Git 项目、主题教程和网站推荐三条生成链路。模型负责按搜索意图生成自然内容，服务端负责确定性质量门禁；任何 SEO 指令都不能覆盖事实边界、提示词注入防护和正文长度限制。文章详情通过 `ArticleSeoView` 动态计算审核辅助分，不新增冗余持久化字段，编辑新版本后分数会立即重新计算。
 
 ### 6.3 审核与渠道发布
 
@@ -206,11 +217,11 @@ Editor/Admin
 
 `PlatformContentAdapter` 是纯应用层组件，根据 `ChannelCatalog` 将文章主稿转换为 `AdaptedContent`。输出包含渠道类型、内容格式、标题、正文、标签和字符上限。所有 API Publisher 接收同一个 `AdaptedContent`，Web 人工发布工作区也调用同一组件，保证页面预览与实际发布规则一致。
 
-`ChannelCatalog` 维护平台展示名称、API 支持状态、内容格式、字符限制、官方编辑入口和允许的发布结果域名。无稳定 API 的渠道不创建 `channel_accounts`，因此不保存第三方登录凭据。
+`ChannelCatalog` 维护平台展示名称、API 支持状态、内容格式、字符限制、官方编辑入口、允许的发布结果域名以及 API 凭据字段和表单标签。后端校验、Portal 表单和前端显示均读取这一份定义。无稳定 API 的渠道不创建 `channel_accounts`，因此不保存第三方登录凭据。
 
 人工发布通过 `manual_publications` 保存最终标题、正文、格式、外部 URL、操作人和时间。保存前校验文章状态、渠道内容格式、字符限制、HTTPS 以及结果 URL 的平台域名。
 
-`PublicationRecord` 是应用层统一只读模型。`PublishingApplicationService` 分别从 `PublicationRepository.findRecentApi` 与 `ManualPublicationRepository.findRecent` 读取租户内记录，补充安全的账号展示名称与内容格式后合并排序。该设计不修改两张事实表，也不会把渠道密文凭据或人工正文快照暴露给页面/API。
+`PublicationRecord` 是应用层统一只读模型。`PublicationQueryApplicationService` 分别从 `PublicationRepository.findRecentApi` 与 `ManualPublicationRepository.findRecent` 读取租户内记录，补充安全的账号展示名称与内容格式后合并排序。该设计不修改两张事实表，也不会把渠道密文凭据或人工正文快照暴露给页面/API。
 
 `/publishing` 基于统一记录构建文章/渠道最新状态矩阵和完整时间线；`GET /api/v1/publications` 提供同一安全视图。单条 API 发布详情接口 `/api/v1/publications/{publicationId}` 保持兼容。
 
@@ -230,6 +241,8 @@ Editor/Admin
 4. 提交领取事务后执行外部调用，避免长时间持有数据库锁。
 5. 完成更新必须匹配任务 ID、`RUNNING` 状态和当前 `lock_owner`。
 
+`DurableJobWorker` 不再维护任务类型 `switch`。每种任务通过独立 `JobHandler` 注册，启动时构建 `JobType → JobHandler` 映射并拒绝重复注册；新增任务类型时同时新增 Payload、Handler 和测试即可。
+
 多实例会在数据库层竞争同一任务，不依赖单机内存锁。
 
 ### 7.3 租约恢复
@@ -246,6 +259,8 @@ Editor/Admin
 - `GIT_IMPORT_FAILED`
 - `AI_REQUEST_FAILED`
 - `AI_REQUEST_INTERRUPTED`
+- `WEBSITE_FETCH_FAILED`
+- `WEBSITE_FETCH_INTERRUPTED`
 
 退避公式：
 
@@ -468,8 +483,7 @@ POST /api/v1/articles/{articleId}/publications
 
 | 环境变量 | 默认值 | 说明 |
 |---|---|---|
-| `PUBLISHER_SECURITY_ENABLED` | `false` | 启用 JWT Resource Server；本地登录模式保持 false |
-| `PUBLISHER_LOCAL_SECURITY_ENABLED` | `false` | 启用 PostgreSQL 本地登录；与 JWT 模式互斥 |
+| `PUBLISHER_SECURITY_MODE` | `DISABLED` | 安全模式：`LOCAL`、`JWT` 或 `DISABLED`；生产禁止使用 `DISABLED` |
 | `PUBLISHER_LOCAL_ADMIN_USERNAME` | 空 | 首次启动创建的管理员用户名 |
 | `PUBLISHER_LOCAL_ADMIN_PASSWORD` | 空 | 首次启动密码，至少 16 位，初始化后移除 |
 | `PUBLISHER_LOCAL_ADMIN_TENANT` | `local` | 首次管理员所属租户 |
