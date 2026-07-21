@@ -17,9 +17,9 @@ public class CreateTopicArticleForm {
     @Size(max = 10000) private String referenceNotes = "";
     @NotBlank @Size(max = 20) private String language = "zh-CN";
     @NotBlank @Size(max = 50) private String tone = "专业、清晰、循序渐进";
-    @Min(200) @Max(20000) private int minCharacters = 1500;
-    @Min(200) @Max(20000) private int maxCharacters = 5000;
-    @Min(1) @Max(30) private int maxKeywords = 10;
+    @Min(200) @Max(3000) private int minCharacters = 800;
+    @Min(200) @Max(3000) private int maxCharacters = 2200;
+    @Min(1) @Max(30) private int maxKeywords = 12;
     @Size(max = 10000) private String excludedKeywords = "";
     @Size(max = 2200) private String requiredSections = "学习目标\n前置知识\n分步教程\n完整示例\n常见问题\n总结";
     @NotBlank @Pattern(regexp = "[A-Za-z0-9._:-]{8,128}") private String idempotencyKey;

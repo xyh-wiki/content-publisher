@@ -28,6 +28,7 @@ import static org.mockito.Mockito.when;
 
 class OpenAiCompatibleContentGeneratorTest {
     private HttpServer server;
+    private String lastRequestBody;
 
     @AfterEach
     void stopServer() {
@@ -49,6 +50,39 @@ class OpenAiCompatibleContentGeneratorTest {
         assertThat(result.markdown()).contains("## 项目概览", "Git");
         assertThat(result.titleEn()).isEqualTo("Git Project Analysis Platform");
         assertThat(result.markdownEn()).contains("## Overview");
+        assertThat(lastRequestBody).contains("SEO 优化要求", "Meta Description", "常见问题",
+                "primaryKeyword", "Git");
+    }
+
+    @Test
+    void shouldAllowEnglishTranslationToUseTheGlobalLengthLimit() throws Exception {
+        String markdown = "## 项目概览\nGit 自动分析平台。" + "这是经过仓库事实校验的技术说明。".repeat(20);
+        String markdownEn = "## Overview\n" + "Verified technical documentation. ".repeat(80);
+        OpenAiCompatibleContentGenerator generator = generator(aiEnvelopeWithEnglish(markdown, markdownEn));
+        GenerationPolicy policy = new GenerationPolicy("zh-CN", "专业", 200, 2000, 2,
+                List.of("Git"), List.of(), List.of("项目概览"));
+
+        var result = generator.generate("tenant-test", snapshot(), policy);
+
+        assertThat(result.markdownEn()).hasSizeGreaterThan(policy.maxCharacters());
+        assertThat(result.markdownEn().codePointCount(0, result.markdownEn().length()))
+                .isLessThanOrEqualTo(GenerationPolicy.MAX_CHARACTERS);
+    }
+
+    @Test
+    void shouldCompactEnglishTranslationInsteadOfRejectingSmallOverflow() throws Exception {
+        String markdown = "## 项目概览\nGit 自动分析平台。" + "这是经过仓库事实校验的技术说明。".repeat(20);
+        String markdownEn = "## Overview\n\n" + "Verified technical documentation. ".repeat(100);
+        OpenAiCompatibleContentGenerator generator = generator(aiEnvelopeWithEnglish(markdown, markdownEn));
+        GenerationPolicy policy = new GenerationPolicy("zh-CN", "专业", 200, 2000, 2,
+                List.of("Git"), List.of(), List.of("项目概览"));
+
+        var result = generator.generate("tenant-test", snapshot(), policy);
+
+        assertThat(markdownEn.codePointCount(0, markdownEn.length()))
+                .isGreaterThan(GenerationPolicy.MAX_CHARACTERS);
+        assertThat(result.markdownEn().codePointCount(0, result.markdownEn().length()))
+                .isBetween(50, GenerationPolicy.MAX_CHARACTERS);
     }
 
     @Test
@@ -93,6 +127,19 @@ class OpenAiCompatibleContentGeneratorTest {
                 .isInstanceOf(ApplicationException.class)
                 .extracting(exception -> ((ApplicationException) exception).code())
                 .isEqualTo("AI_OUTPUT_REJECTED");
+    }
+
+    @Test
+    void shouldRejectLongFormArticleWithoutEnoughSeoHeadings() throws Exception {
+        String markdown = "## 项目概览\nGit 自动分析平台。" + "这是经过仓库事实校验的技术说明。".repeat(60);
+        OpenAiCompatibleContentGenerator generator = generator(aiEnvelope(markdown, List.of("Git")));
+        GenerationPolicy policy = new GenerationPolicy("zh-CN", "专业", 600, 2000, 5,
+                List.of("Git"), List.of(), List.of("项目概览"));
+
+        assertThatThrownBy(() -> generator.generate("tenant-test", snapshot(), policy))
+                .isInstanceOf(ApplicationException.class)
+                .isInstanceOfSatisfying(ApplicationException.class,
+                        exception -> assertThat(exception.getMessage()).contains("至少需要两个二级标题"));
     }
 
     @Test
@@ -148,7 +195,7 @@ class OpenAiCompatibleContentGeneratorTest {
     private OpenAiCompatibleContentGenerator generator(String response) throws Exception {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
-            exchange.getRequestBody().readAllBytes();
+            lastRequestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             byte[] body = response.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
@@ -175,6 +222,22 @@ class OpenAiCompatibleContentGeneratorTest {
         payload.put("summaryEn", "Generated from verified repository facts.");
         payload.put("markdownEn", englishMarkdown());
         payload.put("keywordsEn", keywords);
+        String content = mapper.writeValueAsString(payload);
+        return mapper.writeValueAsString(java.util.Map.of("choices", List.of(
+                java.util.Map.of("message", java.util.Map.of("content", content)))));
+    }
+
+    private String aiEnvelopeWithEnglish(String markdown, String markdownEn) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        java.util.Map<String, Object> payload = new java.util.LinkedHashMap<>();
+        payload.put("title", "Git 项目分析平台");
+        payload.put("summary", "依据仓库事实生成文章。");
+        payload.put("markdown", markdown);
+        payload.put("keywords", List.of("Git"));
+        payload.put("titleEn", "Git Project Analysis Platform");
+        payload.put("summaryEn", "Generated from verified repository facts.");
+        payload.put("markdownEn", markdownEn);
+        payload.put("keywordsEn", List.of("Git"));
         String content = mapper.writeValueAsString(payload);
         return mapper.writeValueAsString(java.util.Map.of("choices", List.of(
                 java.util.Map.of("message", java.util.Map.of("content", content)))));

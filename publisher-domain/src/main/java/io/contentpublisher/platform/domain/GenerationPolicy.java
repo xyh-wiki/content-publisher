@@ -11,11 +11,13 @@ public record GenerationPolicy(
         List<String> requiredKeywords,
         List<String> excludedKeywords,
         List<String> requiredSections) {
+    public static final int MAX_CHARACTERS = 3_000;
+
     public GenerationPolicy {
         requiredKeywords = normalized(requiredKeywords);
         excludedKeywords = normalized(excludedKeywords);
         requiredSections = normalized(requiredSections);
-        if (minCharacters < 200 || maxCharacters > 20_000 || minCharacters > maxCharacters) {
+        if (minCharacters < 200 || maxCharacters > MAX_CHARACTERS || minCharacters > maxCharacters) {
             throw new IllegalArgumentException("文章长度约束无效");
         }
         if (maxKeywords < 1 || maxKeywords > 30) {

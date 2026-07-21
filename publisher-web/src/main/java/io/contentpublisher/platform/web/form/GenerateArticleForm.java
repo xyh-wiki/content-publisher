@@ -16,16 +16,16 @@ public class GenerateArticleForm {
     private String tone = "专业、客观、面向开发者";
 
     @Min(value = 200, message = "最小字数不能少于 200")
-    @Max(value = 20000, message = "最小字数不能超过 20000")
-    private int minCharacters = 1200;
+    @Max(value = 3000, message = "最小字数不能超过 3000")
+    private int minCharacters = 800;
 
     @Min(value = 200, message = "最大字数不能少于 200")
-    @Max(value = 20000, message = "最大字数不能超过 20000")
-    private int maxCharacters = 3000;
+    @Max(value = 3000, message = "最大字数不能超过 3000")
+    private int maxCharacters = 2200;
 
     @Min(value = 1, message = "关键词上限不能小于 1")
     @Max(value = 30, message = "关键词上限不能超过 30")
-    private int maxKeywords = 8;
+    private int maxKeywords = 12;
 
     @Size(max = 3200, message = "必选关键词内容过长")
     private String requiredKeywords = "";

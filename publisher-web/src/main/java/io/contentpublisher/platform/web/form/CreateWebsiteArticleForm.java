@@ -14,9 +14,9 @@ public class CreateWebsiteArticleForm {
     @Size(max = 3200) private String keywords = "";
     @NotBlank @Size(max = 20) private String language = "zh-CN";
     @NotBlank @Size(max = 50) private String tone = "客观、克制、信息密度高";
-    @Min(200) @Max(20000) private int minCharacters = 1200;
-    @Min(200) @Max(20000) private int maxCharacters = 4000;
-    @Min(1) @Max(30) private int maxKeywords = 10;
+    @Min(200) @Max(3000) private int minCharacters = 600;
+    @Min(200) @Max(3000) private int maxCharacters = 1800;
+    @Min(1) @Max(30) private int maxKeywords = 12;
     @Size(max = 10000) private String excludedKeywords = "最好,第一,唯一,保证";
     @Size(max = 2200) private String requiredSections = "网站定位\n核心功能\n适用人群\n使用方式\n优势与局限\n总结";
     @NotBlank @Pattern(regexp = "[A-Za-z0-9._:-]{8,128}") private String idempotencyKey;

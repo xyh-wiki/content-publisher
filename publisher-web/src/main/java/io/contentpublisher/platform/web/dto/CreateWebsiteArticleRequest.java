@@ -15,8 +15,8 @@ public record CreateWebsiteArticleRequest(
         @Size(max = 30) List<@Size(max = 100) String> keywords,
         @NotBlank @Size(max = 20) String language,
         @NotBlank @Size(max = 50) String tone,
-        @Min(200) @Max(20000) int minCharacters,
-        @Min(200) @Max(20000) int maxCharacters,
+        @Min(200) @Max(3000) int minCharacters,
+        @Min(200) @Max(3000) int maxCharacters,
         @Min(1) @Max(30) int maxKeywords,
         @Size(max = 100) List<@Size(max = 100) String> excludedKeywords,
         @Size(max = 20) List<@Size(max = 100) String> requiredSections) {
