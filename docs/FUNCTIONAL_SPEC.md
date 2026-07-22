@@ -4,7 +4,7 @@
 
 本文档描述 Content Publisher 的产品目标、用户角色、功能范围、业务流程、业务规则和验收口径。面向产品、运营、测试、项目负责人和实施人员。
 
-当前版本交付内容生产、人工审核、平台内容自适应、10 个官方 API 渠道发布、17 个人工跳转发布渠道和渠道账号生命周期管理。
+当前版本交付内容生产、人工审核、平台内容自适应、9 个可新接入的官方 API 渠道、Medium 存量适配器、17 个人工发布渠道和渠道账号生命周期管理。
 
 ## 2. 产品目标
 
@@ -272,9 +272,9 @@ DRAFT → APPROVED → PUBLISHED
 | WordPress | 租户配置的 HTTPS 站点 | `username`、`applicationPassword` |
 | Discourse | 租户配置的 HTTPS 站点 | `apiKey`、`apiUsername` |
 | GitHub Discussions | 固定 `https://api.github.com` | `token`、`repositoryId`、`categoryId` |
-| Twitter/X | 固定 `https://api.x.com` | `accessToken` |
-| Reddit | 固定 `https://oauth.reddit.com` | `accessToken`、`subreddit` |
-| Hashnode | 固定 `https://gql.hashnode.com` | `token`、`publicationId` |
+| Twitter/X | 固定 `https://api.x.com` | `accessToken`、`refreshToken`、`clientId`、`clientSecret` |
+| Reddit | 固定 `https://oauth.reddit.com` | `accessToken`、`refreshToken`、`clientId`、`clientSecret`、`subreddit` |
+| Hashnode | 固定 `https://gql-beta.hashnode.com/` | `token`、`publicationId` |
 | Medium | 固定 `https://api.medium.com` | `token`、`authorId` |
 | Mastodon | 租户配置的 HTTPS 实例 | `accessToken` |
 | Ghost | 租户配置的 HTTPS 站点 | `adminApiKey`，格式为 `id:hexSecret` |
@@ -290,7 +290,26 @@ DRAFT → APPROVED → PUBLISHED
 - WordPress、Discourse、Mastodon 和 Ghost 主机必须位于服务器允许列表，且 DNS 不得解析到私网地址。
 - Admin 可停用或重新启用账号；停用账号不能接受新的发布任务。
 - Admin 可在线轮换平台 Token/API Key。请求必须携带 `expectedVersion`，数据库使用版本条件更新拒绝并发覆盖。
+- Admin 可执行连接测试；最近一次成功或失败状态、说明和时间持久化保存。凭据轮换后旧验证结果自动清除，必须重新验证。
+- Twitter/X 和 Reddit 在实际发布前使用 Refresh Token 获取新的 Access Token；平台返回轮换后的 Refresh Token 时，系统通过账号版本条件更新重新加密保存。并发刷新发生冲突时优先使用数据库中已保存的新凭据。
 - Medium 官方 API 不再面向新用户签发 Integration Token；该适配器仅适用于已合法持有可用 Token 的现有账号。
+
+渠道申请与配置入口：
+
+| 渠道 | 申请与配置步骤 |
+|---|---|
+| DEV | 在 DEV 设置中创建 API Key，账号地址保持 `https://dev.to`，保存后执行连接测试。 |
+| WordPress | 在目标站点为专用发布用户创建 Application Password，将站点 HTTPS 根地址加入服务器允许列表。 |
+| Discourse | 由站点管理员创建受限 API Key 和 API Username，将论坛 HTTPS 根地址加入允许列表。 |
+| GitHub Discussions | 为目标仓库启用 Discussions，创建具备对应仓库权限的 Token，并通过 GraphQL 获取 Repository ID 与 Category ID。 |
+| Twitter/X | 在开发者后台创建项目与 OAuth 2.0 应用，配置回调地址和发帖权限，通过 Authorization Code + PKCE 获取 Access Token 与 Refresh Token，再填写 Client ID 和 Client Secret。 |
+| Reddit | 先按 Reddit Data API 流程申请访问，创建 Web 应用并完成用户授权，取得 Access Token、Refresh Token、Client ID、Client Secret，最后填写目标 Subreddit。 |
+| Hashnode | 创建 Personal Access Token，并取得目标 Publication ID；GraphQL 地址固定为 `https://gql-beta.hashnode.com/`。 |
+| Medium | 仅已有 Integration Token 的存量账号可配置；平台不再支持新的 API 接入申请。 |
+| Mastodon | 在目标实例注册应用并生成具备发布权限的 Access Token，将实例 HTTPS 地址加入允许列表。 |
+| Ghost | 在 Ghost Admin 创建 Custom Integration，复制 Admin API Key，并将站点 HTTPS 地址加入允许列表。 |
+
+申请规则和字段以各平台官方后台实际展示为准。平台未批准 API 权限前，不应通过 Cookie、验证码绕过或浏览器模拟登录替代。
 
 ### 5.11 平台内容自适应与渠道发布
 
@@ -302,6 +321,10 @@ DRAFT → APPROVED → PUBLISHED
 - 派生内容不会覆盖文章主稿；API 请求和人工发布预览使用同一适配服务。
 
 只有 `APPROVED` 或已经在其他渠道发布过的 `PUBLISHED` 文章可以提交 `PUBLISH_ARTICLE` 任务。
+
+提交前必须通过服务端发布预检：文章状态有效、账号启用、连接验证未失败、适配器存在、地址安全、凭据字段完整，并且国外渠道已有英文标题、摘要和正文。页面禁用未通过预检的账号，直接调用 POST 接口时服务端仍会重复校验。
+
+发布请求可以携带 UTC `scheduledAt`：留空立即进入队列，过去一分钟以上的时间被拒绝，最长可预约一年。只有 `PENDING` 或 `RETRY_WAIT` 且尚未被工作器领取的任务可以取消；`RUNNING`、成功、失败和已取消任务不能再次取消。
 
 发布结果保存：
 
@@ -320,11 +343,13 @@ DRAFT → APPROVED → PUBLISHED
 | WordPress、Discourse、GitHub Discussions、Reddit | 作为原文链接附加到正文 |
 | Twitter/X、Mastodon | 生成带原文链接的受长度控制短帖 |
 
-10 个渠道都会在审核后执行真实官方 API 发布，不创建浏览器自动化任务。由于这些外部 API 不统一支持幂等键，平台不会自动重试结果不确定的发布调用，以避免重复文章；管理员必须先核对渠道结果，再决定后续重放。提交任务的请求哈希包含 `canonicalUrl`，同一幂等键不能静默替换外链。
+除停止新接入的 Medium 外，已启用渠道会在审核和预检通过后执行真实官方 API 发布，不创建浏览器自动化任务。由于这些外部 API 不统一支持幂等键，平台不会自动重试结果不确定的发布调用，以避免重复文章；管理员必须先核对渠道结果，再决定后续重放。提交任务的请求哈希包含 `canonicalUrl` 和 `scheduledAt`，同一幂等键不能静默替换外链或计划时间。
 
-发布中心将 API 发布和人工发布映射为统一记录：
+发布中心按任务阶段拆分为“待发布、执行批次、发布记录、覆盖分析”：
 
-- 按文章与渠道展示最新发布状态矩阵，未发布渠道明确标记为空缺。
+- 发布记录只展示真实 API/人工发布结果，不重复展示“已连接接口”和“人工发布平台”；这些信息由渠道管理单独维护。
+- 执行批次按同次多渠道提交聚合进度，存在活跃任务时每 5 秒自动同步，并支持取消尚未执行的单个渠道任务。
+- 覆盖分析按文章与渠道展示最新状态，未发布渠道明确标记为空缺。
 - 统一时间线展示发布方式、状态、账号或操作人、更新时间、结果外链和有限失败信息。
 - API 与人工历史事实分别保留，不因统一视图而覆盖或删除。
 - Viewer 可查看租户内发布状态，但任何页面和查询接口都不返回渠道凭据或人工发布正文快照。
@@ -344,12 +369,16 @@ DRAFT → APPROVED → PUBLISHED
 | POST | `/api/v1/channel-accounts` | Admin | 创建加密渠道账号 |
 | GET | `/api/v1/channel-accounts` | Editor/Admin | 查看渠道账号元数据 |
 | GET | `/api/v1/channel-accounts/{accountId}` | Editor/Admin | 查看单个渠道账号元数据 |
+| PUT | `/api/v1/channel-accounts/{accountId}` | Admin | 修改账号名称或安全地址，要求 `expectedVersion` |
 | PATCH | `/api/v1/channel-accounts/{accountId}/status` | Admin | 启用或停用账号，要求 `expectedVersion` |
 | PUT | `/api/v1/channel-accounts/{accountId}/credentials` | Admin | 加密轮换凭据，要求 `expectedVersion` |
-| POST | `/api/v1/articles/{articleId}/publications` | Editor/Admin | 提交渠道发布任务 |
+| POST | `/api/v1/channel-accounts/{accountId}/verify` | Admin | 测试连接并保存验证状态 |
+| POST | `/api/v1/articles/{articleId}/publications` | Editor/Admin | 提交单渠道发布任务，可带 `scheduledAt` |
+| POST | `/api/v1/articles/{articleId}/publication-batches` | Editor/Admin | 提交多渠道发布批次，可带统一 `scheduledAt` |
 | GET | `/api/v1/publications?limit=50` | Viewer/Editor/Admin | 查看 API 与人工统一发布记录 |
 | GET | `/api/v1/publications/{publicationId}` | Viewer/Editor/Admin | 查看发布结果 |
 | GET | `/api/v1/jobs/{jobId}` | Viewer/Editor/Admin | 查询租户内任务 |
+| POST | `/api/v1/jobs/{jobId}/cancel` | Editor/Admin | 取消尚未执行或等待重试的任务 |
 | GET | `/actuator/health` | 匿名 | 健康检查 |
 
 Git 导入、文章生成和发布任务成功返回 `202 Accepted`，并通过 `Location` 响应头给出任务查询地址；账号创建返回 `201 Created`，账号启停和凭据轮换返回 `200 OK`。
@@ -383,13 +412,19 @@ Git 导入、文章生成和发布任务成功返回 `202 Accepted`，并通过 
 | ARTICLE_VERSION_CONFLICT | 409 | 编辑所基于的文章版本已过期 |
 | CHANNEL_ACCOUNT_VERSION_CONFLICT | 409 | 渠道账号版本已被其他请求修改 |
 | CHANNEL_ACCOUNT_DISABLED | 409 | 渠道账号已停用 |
+| CHANNEL_CONNECTION_NOT_READY | 409 | 渠道最近一次连接验证失败 |
+| CHANNEL_CREDENTIALS_INVALID | 400 | 渠道凭据字段不完整 |
 | CHANNELS_DISABLED | 409 | 渠道发布功能未启用 |
+| JOB_NOT_CANCELLABLE | 409 | 任务已执行、已结束或已被工作器领取 |
 | TENANT_JOB_QUOTA_EXCEEDED | 429 | 活跃任务达到上限 |
 | GIT_URL_REJECTED | 422 | Git 地址违反安全规则 |
 | AI_OUTPUT_REJECTED | 422 | AI 输出未满足内容策略 |
 | CHANNEL_ENDPOINT_REJECTED | 422 | 渠道地址违反安全规则 |
 | CANONICAL_URL_REJECTED | 422 | 外链不是合规 HTTPS URL |
+| SCHEDULED_AT_INVALID | 422 | 计划发布时间无效或超过一年 |
+| ARTICLE_TRANSLATION_MISSING | 422 | 国外渠道所需英文稿不完整 |
 | CHANNEL_RESPONSE_REJECTED | 502 | 渠道官方 API 拒绝请求 |
+| CHANNEL_AUTH_REFRESH_FAILED | 502 | OAuth 授权刷新失败 |
 
 ## 8. 数据分级
 
@@ -420,7 +455,7 @@ Git 导入、文章生成和发布任务成功返回 `202 Accepted`，并通过 
 ## 10. 当前版本验收标准
 
 - Git 地址安全校验有效。
-- V1–V8 数据库迁移可从空库连续执行。
+- V1–V18 数据库迁移可从空库连续执行。
 - 写接口返回 202、任务 ID 和 Location。
 - 相同幂等请求返回同一任务。
 - 幂等冲突和租户配额返回稳定错误码。
@@ -437,3 +472,7 @@ Git 导入、文章生成和发布任务成功返回 `202 Accepted`，并通过 
 - 自托管渠道地址必须通过 HTTPS、主机允许列表和公网地址校验。
 - 非 HTTPS `canonicalUrl` 必须在任务创建前被拒绝。
 - 发布成功后必须保存外部内容 ID、URL 和审计记录。
+- 国外渠道缺少英文稿、账号停用、连接验证失败或凭据字段不完整时，发布预检必须阻止提交。
+- 计划任务在 `scheduledAt` 到达前不能被工作器领取。
+- `PENDING`、`RETRY_WAIT` 任务可取消，`RUNNING` 任务取消必须失败且不得改变原状态。
+- X/Reddit 刷新 Access Token 后，新凭据必须以账号新版本重新加密保存。

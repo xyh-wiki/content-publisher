@@ -2,7 +2,7 @@
 
 企业级多渠道技术内容生成与分发平台。系统从 Git 仓库提取可验证的项目事实，通过自定义 OpenAI 兼容模型生成受控技术文章，并以多租户、可审计、可恢复的异步任务运行。
 
-当前版本已完成“Git 项目导入 → 仓库分析 → AI 文章生成 → 人工审核 → 平台内容适配 → 多渠道发布”的完整闭环。已接入 DEV、WordPress、Discourse、GitHub Discussions、Twitter/X、Reddit、Hashnode、Medium、Mastodon 和 Ghost 共 10 个官方 API 渠道；并为小红书、CSDN、掘金、知乎、博客园、SegmentFault、V2EX、开源中国、LinkedIn、微信公众号、简书、今日头条、B 站专栏、51CTO 博客、腾讯云、阿里云和华为云共 17 个平台提供合规的跳转登录发布工作区。系统不会模拟登录、保存平台密码或绕过开放接口。
+当前版本已完成“Git 项目导入 → 仓库分析 → AI 文章生成 → 人工审核 → 发布预检 → 定时或立即多渠道发布”的完整闭环。已接入 DEV、WordPress、Discourse、GitHub Discussions、Twitter/X、Reddit、Hashnode、Mastodon 和 Ghost 9 个可新接入的官方 API 渠道，并保留 Medium 存量 Token 适配器；同时为小红书、CSDN、掘金、知乎、博客园、SegmentFault、V2EX、开源中国、LinkedIn、微信公众号、简书、今日头条、B 站专栏、51CTO 博客、腾讯云、阿里云和华为云共 17 个平台提供合规的人工发布工作区。系统不会模拟登录、保存平台密码或绕过开放接口。
 
 ## 交付状态
 
@@ -15,11 +15,13 @@
 | 持久化异步任务 | 已完成 | 幂等、配额、租约、重试、崩溃恢复 |
 | 文章人工审核 | 已完成 | Admin 审核通过或驳回，未审核文章禁止发布 |
 | 平台内容自适应 | 已完成 | Markdown、纯文本、短帖长度、标题和标签规则 |
-| 10 个 API 渠道发布 | 已完成 | 官方 API、长文、短帖、外链和响应映射 |
+| API 渠道发布 | 已完成 | 9 个可新接入渠道，另保留 Medium 存量适配器 |
 | 17 个人工渠道发布 | 已完成 | 内容复制、官方登录跳转、外链回填和发布快照 |
 | 统一发布记录与矩阵 | 已完成 | API/人工记录统一查询、文章/渠道覆盖矩阵和失败状态核对 |
 | 文章版本管理 | 已完成 | 不可变版本快照和 `expectedVersion` 并发控制 |
-| 渠道账号生命周期 | 已完成 | 启用、停用、凭据在线轮换和数据库原子版本控制 |
+| 渠道账号生命周期 | 已完成 | 资料编辑、启停、连接测试、凭据轮换和数据库原子版本控制 |
+| 发布预检与调度 | 已完成 | 英文稿、连接、凭据和地址检查；UTC 定时发布与待执行任务取消 |
+| OAuth 自动刷新 | 已完成 | X/Reddit 发布前刷新 Access Token，并加密保存轮换结果 |
 | 发布计划与效果分析 | 规划中 | 详见功能说明和技术路线 |
 
 ## 当前能力
@@ -171,8 +173,10 @@ curl -X POST http://127.0.0.1:8080/api/v1/projects/3cc05ec9-3dd6-46b8-a5de-e96af
 
 1. Admin 创建渠道账号：`POST /api/v1/channel-accounts`。
 2. Admin 审核文章：`POST /api/v1/articles/{articleId}/approve`。
-3. Editor 或 Admin 提交发布：`POST /api/v1/articles/{articleId}/publications`。
-4. 查询任务；成功后通过 `GET /api/v1/publications/{publicationId}` 获取外部 URL。
+3. 在发布页检查账号预检结果；国外渠道必须先补齐英文标题、摘要和正文。
+4. Editor 或 Admin 提交单渠道或批量发布，可选携带 UTC `scheduledAt`。
+5. 查询任务；尚未领取的 `PENDING`、`RETRY_WAIT` 任务可调用 `POST /api/v1/jobs/{jobId}/cancel`。
+6. 成功后通过 `GET /api/v1/publications/{publicationId}` 获取外部 URL。
 
 `GET /api/v1/publications?limit=50` 返回租户内统一发布记录，按最新更新时间倒序合并 API 与人工发布结果；响应不包含渠道凭据或人工发布正文快照。
 
@@ -192,10 +196,10 @@ openssl rand -base64 32
 | WordPress | `username`、`applicationPassword` | HTTPS 允许列表 |
 | Discourse | `apiKey`、`apiUsername` | HTTPS 允许列表 |
 | GitHub Discussions | `token`、`repositoryId`、`categoryId` | 固定 GitHub API |
-| Twitter/X | `accessToken` | 固定 X API |
-| Reddit | `accessToken`、`subreddit` | 固定 Reddit OAuth API |
+| Twitter/X | `accessToken`、`refreshToken`、`clientId`、`clientSecret` | 固定 X API；发布前自动刷新 |
+| Reddit | `accessToken`、`refreshToken`、`clientId`、`clientSecret`、`subreddit` | 固定 Reddit OAuth API；发布前自动刷新 |
 | Hashnode | `token`、`publicationId` | 固定 Hashnode GraphQL API |
-| Medium | `token`、`authorId` | 固定 Medium API；仅适用于已有 Integration Token 的账号 |
+| Medium | `token`、`authorId` | 停止新接入；仅保留已有 Integration Token 的存量账号 |
 | Mastodon | `accessToken` | HTTPS 允许列表 |
 | Ghost | `adminApiKey` | HTTPS 允许列表；Key 格式为 `id:hexSecret` |
 
@@ -225,11 +229,10 @@ docker compose \
 
 ## 当前边界与下一阶段
 
-尚未实现：独立审核历史表、主加密密钥迁移、UTM 策略、发布日历、效果统计、渠道连通性检测和 OAuth Refresh Token 生命周期管理。
+尚未实现：独立审核历史表、主加密密钥迁移、UTM 策略、可视化发布日历、效果统计和 OAuth 到期提醒。
 
 下一阶段建议依次完成：
 
-1. 渠道连通性检测、账号健康状态和最近检查时间。
-2. 账号启停、凭据轮换入口和到期提醒完善。
-3. 发布失败核对、人工重放控制台和任务指标告警。
-4. 平台模板、可编辑预览、发布日历、UTM 与效果回收。
+1. OAuth 到期提醒和主密钥版本化迁移。
+2. 发布失败批量核对、人工重放控制台和任务指标告警。
+3. 可视化发布日历、UTM 与效果回收。
