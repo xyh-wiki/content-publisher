@@ -4,6 +4,7 @@ import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.application.port.ProjectRepository;
 import io.contentpublisher.platform.application.port.ManualPublicationRepository;
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
+import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.application.AiSettingsApplicationService;
 import io.contentpublisher.platform.domain.Article;
@@ -12,6 +13,7 @@ import io.contentpublisher.platform.domain.ArticleVersion;
 import io.contentpublisher.platform.domain.ChannelAccount;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.ContentOrigin;
 import io.contentpublisher.platform.domain.JobPayload;
 import io.contentpublisher.platform.domain.Project;
 import io.contentpublisher.platform.domain.ProjectStatus;
@@ -25,7 +27,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,9 +53,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "publisher.security.local.bootstrap-tenant=tenant-local",
         "publisher.security.local.bootstrap-must-change-password=false",
         "publisher.secrets.encryption-key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "publisher.channels.encryption-key=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         "publisher.ai.security.allow-private-addresses=true",
         "publisher.jobs.worker-enabled=false",
-        "publisher.channels.enabled=false"
+        "publisher.channels.enabled=true"
 })
 @AutoConfigureMockMvc
 class LocalSecurityIntegrationTest {
@@ -61,6 +68,7 @@ class LocalSecurityIntegrationTest {
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired ManualPublicationRepository manualPublications;
     @Autowired ChannelAccountRepository channelAccounts;
+    @Autowired CredentialVault credentialVault;
     @Autowired JobRepository jobRepository;
 
     @Test
@@ -333,7 +341,7 @@ class LocalSecurityIntegrationTest {
 
         mockMvc.perform(get("/articles/" + articleId).session(session))
                 .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("APPROVED")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("已审核")));
     }
 
     @Test
@@ -375,51 +383,75 @@ class LocalSecurityIntegrationTest {
                 "Manual publishing project", "main", "manual123", List.of("Java"), "MIT", ProjectStatus.READY,
                 "admin", "admin", now, now));
         UUID articleId = UUID.randomUUID();
-        Article article = new Article(articleId, "tenant-local", projectId, null, "多平台发布指南", "发布摘要",
-                "## 核心能力\n\n支持 Markdown 与纯文本。", List.of("Java", "发布"), "zh-CN", "manual123", 1,
-                ArticleStatus.APPROVED, "admin", "admin", now, now);
+        Article article = new Article(articleId, "tenant-local", ContentOrigin.git(projectId), null,
+                "多平台发布指南", "发布摘要", "## 核心能力\n\n支持 Markdown 与纯文本。",
+                List.of("Java", "发布"), List.of("多平台发布", "Markdown"),
+                "Multi-channel publishing guide", "Publishing summary",
+                "## Core capability\n\nPublish Markdown and plain text through verified channels.",
+                List.of("Java", "publishing"), List.of("multi-channel publishing", "Markdown"),
+                "zh-CN", "manual123", 1, ArticleStatus.APPROVED, "admin", "admin", now, now);
         articles.saveWithVersion(article, new ArticleVersion("tenant-local", articleId, 1, article.title(),
-                article.summary(), article.markdown(), article.keywords(), "admin", now));
+                article.summary(), article.markdown(), article.tags(), article.keywords(), article.titleEn(),
+                article.summaryEn(), article.markdownEn(), article.tagsEn(), article.keywordsEn(), "admin", now));
         UUID devAccountId = UUID.randomUUID();
         UUID xAccountId = UUID.randomUUID();
+        Map<String, String> devCredentials = Map.of("apiKey", "dev-test-key");
+        Map<String, String> xCredentials = Map.of(
+                "accessToken", "x-access",
+                "refreshToken", "x-refresh",
+                "clientId", "x-client",
+                "clientSecret", "x-secret");
         channelAccounts.save(new ChannelAccount(devAccountId, "tenant-local", ChannelType.DEV, "DEV 主账号",
-                "https://dev.to", "v1:test", "account-dev-001", "a".repeat(64), "b".repeat(64), 1,
+                "https://dev.to", credentialVault.encrypt(devCredentials), "account-dev-001", "a".repeat(64),
+                credentialVault.fingerprint(devCredentials), 1,
                 ChannelAccountStatus.ACTIVE, "admin", "admin", now, now));
         channelAccounts.save(new ChannelAccount(xAccountId, "tenant-local", ChannelType.X, "X 主账号",
-                "https://api.x.com", "v1:test", "account-x-001", "c".repeat(64), "d".repeat(64), 1,
+                "https://api.x.com", credentialVault.encrypt(xCredentials), "account-x-001", "c".repeat(64),
+                credentialVault.fingerprint(xCredentials), 1,
                 ChannelAccountStatus.ACTIVE, "admin", "admin", now, now));
+        Instant scheduledAt = Instant.now().plusSeconds(7_200).truncatedTo(ChronoUnit.MINUTES);
+        String scheduledAtValue = LocalDateTime.ofInstant(scheduledAt, ZoneOffset.UTC).toString();
         MockHttpSession session = login();
 
         mockMvc.perform(get("/publishing").session(session)).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("多平台发布中心")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("多平台发布中心")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("已连接接口"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("人工发布平台"))));
         mockMvc.perform(get("/articles/" + articleId).session(session)).andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("进入发布中心")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("一键多平台发布"))));
         mockMvc.perform(get("/publishing/articles/" + articleId).session(session)).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("一键多平台发布")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("批量 API 发布")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEV 主账号")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("X 主账号")));
         mockMvc.perform(post("/articles/" + articleId + "/publication-batches").session(session).with(csrf())
                         .param("channelAccountIds", devAccountId.toString(), xAccountId.toString())
                         .param("canonicalUrl", "https://example.com/original")
+                        .param("scheduledAt", scheduledAtValue)
                         .param("idempotencyKey", "portal-publication-batch-001"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/publishing/articles/" + articleId));
 
-        assertThat(jobRepository.findRecentJobs("tenant-local", 100).stream()
+        var publicationJobs = jobRepository.findRecentJobs("tenant-local", 100).stream()
                 .filter(job -> job.payload() instanceof JobPayload.PublishArticle payload
-                        && payload.articleId().equals(articleId)).toList())
-                .hasSize(2)
+                        && payload.articleId().equals(articleId)).toList();
+        assertThat(publicationJobs).hasSize(2)
                 .extracting(job -> ((JobPayload.PublishArticle) job.payload()).channelAccountId())
                 .containsExactlyInAnyOrder(devAccountId, xAccountId);
-        mockMvc.perform(get("/publishing").session(session)).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("发布批次看板")))
+        assertThat(publicationJobs).extracting(io.contentpublisher.platform.domain.Job::scheduledAt)
+                .containsOnly(scheduledAt);
+        assertThat(publicationJobs).extracting(io.contentpublisher.platform.domain.Job::progressLabel)
+                .containsOnly("等待定时执行");
+        mockMvc.perform(get("/publishing?tab=batches").session(session)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("执行批次")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("DEV 主账号")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("X 主账号")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("2 个平台")));
-        mockMvc.perform(get("/channels").session(session)).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("跳转登录发布平台")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("2 个渠道")));
+        mockMvc.perform(get("/channels?view=manual").session(session)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("打开创作页")));
         mockMvc.perform(get("/articles/" + articleId + "/manual/XIAOHONGSHU").session(session))
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("打开官方登录/发布页")))
@@ -438,9 +470,10 @@ class LocalSecurityIntegrationTest {
 
         assertThat(manualPublications.findByArticle("tenant-local", articleId)).singleElement()
                 .satisfies(item -> assertThat(item.adaptedTitle()).isEqualTo("小红书发布标题"));
-        mockMvc.perform(get("/publishing").session(session)).andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("文章 / 渠道发布矩阵")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("统一发布记录")))
+        mockMvc.perform(get("/publishing?tab=coverage").session(session)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("文章 / 渠道覆盖分析")));
+        mockMvc.perform(get("/publishing?tab=records").session(session)).andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("发布记录")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("MANUAL")));
         mockMvc.perform(get("/api/v1/publications").session(session))
                 .andExpect(status().isOk())

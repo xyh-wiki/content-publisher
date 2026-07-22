@@ -19,8 +19,8 @@ import java.util.Map;
 @Component
 public class GitHubDiscussionsChannelPublisher extends AbstractHttpChannelPublisher {
     private static final String MUTATION = """
-            mutation($input: AddDiscussionInput!) {
-              addDiscussion(input: $input) { discussion { id url } }
+            mutation($input: CreateDiscussionInput!) {
+              createDiscussion(input: $input) { discussion { id url } }
             }
             """;
 
@@ -50,7 +50,7 @@ public class GitHubDiscussionsChannelPublisher extends AbstractHttpChannelPublis
         if (response.has("errors")) {
             throw new ApplicationException("CHANNEL_RESPONSE_REJECTED", "GitHub GraphQL 返回业务错误");
         }
-        JsonNode discussion = response.path("data").path("addDiscussion").path("discussion");
+        JsonNode discussion = response.path("data").path("createDiscussion").path("discussion");
         return new ChannelPublisher.PublishResult(required(discussion, "id"), required(discussion, "url"));
     }
 }

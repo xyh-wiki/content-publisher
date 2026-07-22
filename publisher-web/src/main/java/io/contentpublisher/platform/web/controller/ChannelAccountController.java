@@ -4,6 +4,7 @@ import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.web.dto.ChannelAccountResponse;
 import io.contentpublisher.platform.web.dto.CreateChannelAccountRequest;
 import io.contentpublisher.platform.web.dto.UpdateChannelAccountStatusRequest;
+import io.contentpublisher.platform.web.dto.UpdateChannelAccountRequest;
 import io.contentpublisher.platform.web.dto.RotateChannelCredentialsRequest;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import jakarta.validation.Valid;
@@ -60,10 +61,22 @@ public class ChannelAccountController {
                 request.expectedVersion(), request.status()));
     }
 
+    @PutMapping("/{accountId}")
+    public ChannelAccountResponse update(@PathVariable UUID accountId,
+                                         @Valid @RequestBody UpdateChannelAccountRequest request) {
+        return ChannelAccountResponse.from(publishing.updateAccountProfile(actors.currentActor(), accountId,
+                request.expectedVersion(), request.displayName(), request.baseUrl()));
+    }
+
     @PutMapping("/{accountId}/credentials")
     public ChannelAccountResponse rotateCredentials(@PathVariable UUID accountId,
                                                     @Valid @RequestBody RotateChannelCredentialsRequest request) {
         return ChannelAccountResponse.from(publishing.rotateCredentials(actors.currentActor(), accountId,
                 request.expectedVersion(), request.credentials()));
+    }
+
+    @PostMapping("/{accountId}/verify")
+    public ChannelAccountResponse verify(@PathVariable UUID accountId) {
+        return ChannelAccountResponse.from(publishing.verifyConnection(actors.currentActor(), accountId));
     }
 }

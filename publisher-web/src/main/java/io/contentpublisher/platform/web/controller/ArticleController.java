@@ -102,7 +102,7 @@ public class ArticleController {
                                                @RequestHeader("Idempotency-Key") String idempotencyKey,
                                                @Valid @RequestBody PublishArticleRequest request) {
         var job = jobs.submitPublication(actors.currentActor(), articleId, request.channelAccountId(),
-                request.canonicalUrl(), idempotencyKey);
+                request.canonicalUrl(), idempotencyKey, request.scheduledAt());
         return ResponseEntity.accepted().header(HttpHeaders.LOCATION, "/api/v1/jobs/" + job.id())
                 .body(JobResponse.from(job));
     }
@@ -113,7 +113,7 @@ public class ArticleController {
             @RequestHeader("Idempotency-Key") String idempotencyKey,
             @Valid @RequestBody PublishArticleBatchRequest request) {
         var submitted = jobs.submitPublications(actors.currentActor(), articleId, request.channelAccountIds(),
-                request.canonicalUrl(), idempotencyKey);
+                request.canonicalUrl(), idempotencyKey, request.scheduledAt());
         return ResponseEntity.accepted().body(PublicationBatchResponse.from(submitted));
     }
 

@@ -5,6 +5,7 @@ import io.contentpublisher.platform.application.ChannelCatalog;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.application.PublicationMethod;
 import io.contentpublisher.platform.application.PublicationRecord;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
@@ -18,6 +19,7 @@ import io.contentpublisher.platform.web.dto.ChannelAccountView;
 import io.contentpublisher.platform.web.dto.PublicationMatrixCell;
 import io.contentpublisher.platform.web.dto.PublicationMatrixRow;
 import io.contentpublisher.platform.web.dto.PublicationBatchView;
+import io.contentpublisher.platform.web.dto.PortalPage;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import jakarta.validation.Valid;
 import org.springframework.stereotype.Controller;
@@ -27,12 +29,19 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 
 @Controller
 public class PortalPublishingController {
@@ -52,47 +61,120 @@ public class PortalPublishingController {
     }
 
     @GetMapping("/publishing")
-    public String publishing(Model model) {
+    public String publishing(@RequestParam(defaultValue = "records") String tab,
+                             @RequestParam(required = false) String q,
+                             @RequestParam(required = false) String channel,
+                             @RequestParam(required = false) String status,
+                             @RequestParam(required = false) String method,
+                             @RequestParam(defaultValue = "0") int page,
+                             @RequestParam(defaultValue = "20") int size,
+                             Model model) {
         var actor = actors.currentActor();
         var articles = projects.listArticles(actor, 50);
-        var records = publishing.listPublicationRecords(actor, 100);
         var accountViews = publishing.listAccounts(actor).stream().map(ChannelAccountView::from).toList();
         var channelNames = channelNames();
-        var matrixRecords = publishing.listPublicationRecordsForArticles(actor,
-                articles.stream().map(article -> article.id()).toList());
-        Map<ArticleChannelKey, PublicationRecord> latest = new java.util.HashMap<>();
-        matrixRecords.forEach(record -> latest.putIfAbsent(
-                new ArticleChannelKey(record.articleId(), record.channelType()), record));
-        var matrix = articles.stream().map(article -> new PublicationMatrixRow(article, ChannelCatalog.all().stream()
-                .map(channel -> new PublicationMatrixCell(channel,
-                        latest.get(new ArticleChannelKey(article.id(), channel.type())))).toList())).toList();
         Map<UUID, String> articleNames = new java.util.HashMap<>();
         articles.forEach(article -> articleNames.put(article.id(), article.title()));
         Map<UUID, ChannelAccountView> accountsById = new java.util.HashMap<>();
         accountViews.forEach(account -> accountsById.put(account.id(), account));
         var publicationBatches = PublicationBatchView.aggregate(jobs.listJobs(actor, 100), articleNames,
                 accountsById, channelNames);
+        String selectedTab = normalizeTab(tab);
+        String search = normalizeSearch(q);
+        ChannelType selectedChannel = parseEnum(ChannelType.class, channel);
+        PublicationStatus selectedStatus = parseEnum(PublicationStatus.class, status);
+        PublicationMethod selectedMethod = parseEnum(PublicationMethod.class, method);
+        int selectedPage = Math.min(100, Math.max(0, page));
+        int selectedSize = size == 50 ? 50 : 20;
+        var publicationRecordPage = publishing.searchPublicationRecords(actor, search, selectedChannel,
+                selectedStatus, selectedMethod, selectedPage, selectedSize);
+        long totalRecordCount = publishing.searchPublicationRecords(actor, "", null, null,
+                null, 0, 1).totalItems();
+        long publishedCount = publishing.searchPublicationRecords(actor, "", null,
+                PublicationStatus.PUBLISHED, null, 0, 1).totalItems();
+        List<Article> filteredArticles = articles.stream()
+                .filter(article -> matchesText(search, article.title(), article.summary()))
+                .toList();
+        List<PublicationBatchView> filteredBatches = publicationBatches.stream()
+                .filter(batch -> matchesBatch(batch, search))
+                .toList();
+
         model.addAttribute("articles", articles);
-        model.addAttribute("accounts", accountViews);
-        model.addAttribute("publicationRecords", records);
+        model.addAttribute("articlePage", PortalPage.from(filteredArticles, selectedPage, selectedSize));
+        model.addAttribute("publicationRecordPage", publicationRecordPage);
+        model.addAttribute("publicationBatchPage", PortalPage.from(filteredBatches, selectedPage, selectedSize));
+        model.addAttribute("publicationRecords", publicationRecordPage.items());
+        model.addAttribute("totalRecordCount", totalRecordCount);
         model.addAttribute("publicationBatches", publicationBatches);
         model.addAttribute("activeBatchCount", publicationBatches.stream()
                 .filter(batch -> batch.activeCount() > 0).count());
         model.addAttribute("failedBatchCount", publicationBatches.stream()
                 .filter(batch -> batch.failedCount() > 0).count());
-        model.addAttribute("publicationMatrix", matrix);
+        model.addAttribute("publicationMatrix", selectedTab.equals("coverage")
+                ? publicationMatrix(actor, articles) : List.of());
         model.addAttribute("articleNames", articleNames);
-        model.addAttribute("publishedCount", records.stream()
-                .filter(record -> record.status() == PublicationStatus.PUBLISHED).count());
-        model.addAttribute("failedCount", records.stream()
-                .filter(record -> record.status() == PublicationStatus.FAILED).count());
-        model.addAttribute("apiRecordCount", records.stream()
-                .filter(record -> record.method().name().equals("API")).count());
-        model.addAttribute("manualRecordCount", records.stream()
-                .filter(record -> record.method().name().equals("MANUAL")).count());
-        model.addAttribute("manualTargets", ChannelCatalog.manualOnly());
+        model.addAttribute("publishedCount", publishedCount);
         model.addAttribute("channelNames", channelNames);
+        model.addAttribute("selectedTab", selectedTab);
+        model.addAttribute("searchQuery", search);
+        model.addAttribute("selectedChannel", selectedChannel);
+        model.addAttribute("selectedStatus", selectedStatus);
+        model.addAttribute("selectedMethod", selectedMethod);
+        model.addAttribute("channelOptions", ChannelCatalog.all());
+        model.addAttribute("statusOptions", PublicationStatus.values());
+        model.addAttribute("methodOptions", PublicationMethod.values());
+        model.addAttribute("articleStatusNames", PortalLabels.articleStatusNames());
+        model.addAttribute("publicationStatusNames", PortalLabels.publicationStatusNames());
+        model.addAttribute("publicationMethodNames", PortalLabels.publicationMethodNames());
+        model.addAttribute("jobStatusNames", PortalLabels.jobStatusNames());
         return "publishing";
+    }
+
+    private List<PublicationMatrixRow> publicationMatrix(io.contentpublisher.platform.domain.ActorContext actor,
+                                                          List<Article> articles) {
+        var matrixRecords = publishing.listPublicationRecordsForArticles(actor,
+                articles.stream().map(Article::id).toList());
+        Map<ArticleChannelKey, PublicationRecord> latest = new java.util.HashMap<>();
+        matrixRecords.forEach(record -> latest.putIfAbsent(
+                new ArticleChannelKey(record.articleId(), record.channelType()), record));
+        return articles.stream().map(article -> new PublicationMatrixRow(article, ChannelCatalog.all().stream()
+                .map(channel -> new PublicationMatrixCell(channel,
+                        latest.get(new ArticleChannelKey(article.id(), channel.type())))).toList())).toList();
+    }
+
+    private String normalizeTab(String tab) {
+        String normalized = tab == null ? "" : tab.trim().toLowerCase(Locale.ROOT);
+        return Set.of("queue", "batches", "records", "coverage").contains(normalized) ? normalized : "records";
+    }
+
+    private String normalizeSearch(String value) {
+        if (value == null || value.isBlank()) return "";
+        String normalized = value.trim();
+        return normalized.length() <= 120 ? normalized : normalized.substring(0, 120);
+    }
+
+    private <E extends Enum<E>> E parseEnum(Class<E> type, String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private boolean matchesBatch(PublicationBatchView batch, String search) {
+        if (matchesText(search, batch.articleTitle(), batch.statusLabel())) return true;
+        return batch.items().stream().anyMatch(item -> matchesText(search, item.accountName(), item.channelName(),
+                item.progressLabel(), item.errorMessage()));
+    }
+
+    private boolean matchesText(String search, String... values) {
+        if (search == null || search.isBlank()) return true;
+        String needle = search.toLowerCase(Locale.ROOT);
+        for (String value : values) {
+            if (value != null && value.toLowerCase(Locale.ROOT).contains(needle)) return true;
+        }
+        return false;
     }
 
     @GetMapping("/publishing/articles/{articleId}")
@@ -100,12 +182,20 @@ public class PortalPublishingController {
         var actor = actors.currentActor();
         Article article = publishing.getArticle(actor, articleId);
         model.addAttribute("article", article);
+        model.addAttribute("articleStatusName", PortalLabels.articleStatusNames().get(article.status()));
         BatchPublishArticleForm form = new BatchPublishArticleForm();
         form.setIdempotencyKey(idempotencyKey("publish-batch"));
         model.addAttribute("batchPublishArticleForm", form);
-        model.addAttribute("channelAccounts", publishing.listAccounts(actor).stream()
-                .filter(account -> account.status() == ChannelAccountStatus.ACTIVE)
-                .map(ChannelAccountView::from).toList());
+        var activeAccounts = publishing.listAccounts(actor).stream()
+                .filter(account -> account.status() == ChannelAccountStatus.ACTIVE).toList();
+        model.addAttribute("channelAccounts", activeAccounts.stream().map(ChannelAccountView::from).toList());
+        Map<UUID, io.contentpublisher.platform.application.PublicationPreflightResult> preflights =
+                new java.util.HashMap<>();
+        activeAccounts.forEach(account -> preflights.put(account.id(),
+                publishing.preflight(actor, articleId, account.id())));
+        model.addAttribute("publicationPreflights", preflights);
+        model.addAttribute("readyChannelAccountCount", preflights.values().stream()
+                .filter(io.contentpublisher.platform.application.PublicationPreflightResult::ready).count());
         model.addAttribute("manualTargets", ChannelCatalog.all().stream()
                 .filter(ChannelCatalog.ChannelDefinition::manualAvailable).toList());
         model.addAttribute("publicationRecords", publishing.getArticlePublicationRecords(actor, articleId));
@@ -117,12 +207,13 @@ public class PortalPublishingController {
     }
 
     @GetMapping("/channels")
-    public String channels(Model model) {
+    public String channels(@RequestParam(defaultValue = "api") String view, Model model) {
         if (!model.containsAttribute("channelAccountForm")) {
             CreateChannelAccountForm form = new CreateChannelAccountForm();
             form.setIdempotencyKey(idempotencyKey("channel"));
             model.addAttribute("channelAccountForm", form);
         }
+        model.addAttribute("selectedChannelView", "manual".equalsIgnoreCase(view) ? "manual" : "api");
         populateChannels(model);
         return "channels";
     }
@@ -147,6 +238,75 @@ public class PortalPublishingController {
         }
     }
 
+    @PostMapping("/channels/{accountId}/profile")
+    public String updateChannelProfile(@PathVariable UUID accountId,
+                                       @RequestParam int expectedVersion,
+                                       @RequestParam String displayName,
+                                       @RequestParam(required = false) String baseUrl,
+                                       RedirectAttributes redirectAttributes) {
+        try {
+            publishing.updateAccountProfile(actors.currentActor(), accountId, expectedVersion, displayName,
+                    blankToNull(baseUrl));
+            redirectAttributes.addFlashAttribute("success", "渠道账号信息已更新");
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/channels#account-" + accountId;
+    }
+
+    @PostMapping("/channels/{accountId}/status")
+    public String updateChannelStatus(@PathVariable UUID accountId,
+                                      @RequestParam int expectedVersion,
+                                      @RequestParam ChannelAccountStatus status,
+                                      RedirectAttributes redirectAttributes) {
+        try {
+            publishing.updateAccountStatus(actors.currentActor(), accountId, expectedVersion, status);
+            redirectAttributes.addFlashAttribute("success", status == ChannelAccountStatus.ACTIVE
+                    ? "渠道账号已启用" : "渠道账号已停用");
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/channels#account-" + accountId;
+    }
+
+    @PostMapping("/channels/{accountId}/credentials")
+    public String rotateChannelCredentials(@PathVariable UUID accountId,
+                                           @RequestParam int expectedVersion,
+                                           @RequestParam(required = false) String credentialOne,
+                                           @RequestParam(required = false) String credentialTwo,
+                                           @RequestParam(required = false) String credentialThree,
+                                           @RequestParam(required = false) String credentialFour,
+                                           @RequestParam(required = false) String credentialFive,
+                                           RedirectAttributes redirectAttributes) {
+        try {
+            ChannelType type = publishing.getAccount(actors.currentActor(), accountId).type();
+            publishing.rotateCredentials(actors.currentActor(), accountId, expectedVersion,
+                    credentials(type, credentialOne, credentialTwo, credentialThree, credentialFour,
+                            credentialFive));
+            redirectAttributes.addFlashAttribute("success", "渠道凭据已安全轮换");
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/channels#account-" + accountId;
+    }
+
+    @PostMapping("/channels/{accountId}/verify")
+    public String verifyChannelConnection(@PathVariable UUID accountId,
+                                          RedirectAttributes redirectAttributes) {
+        try {
+            var verified = publishing.verifyConnection(actors.currentActor(), accountId);
+            if (verified.verificationStatus()
+                    == io.contentpublisher.platform.domain.ChannelVerificationStatus.SUCCEEDED) {
+                redirectAttributes.addFlashAttribute("success", verified.verificationMessage());
+            } else {
+                redirectAttributes.addFlashAttribute("error", verified.verificationMessage());
+            }
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/channels#account-" + accountId;
+    }
+
     @PostMapping("/articles/{articleId}/publications")
     public String publishByApi(@PathVariable UUID articleId,
                                @Valid @ModelAttribute PublishArticleForm form,
@@ -158,7 +318,7 @@ public class PortalPublishingController {
         }
         try {
             var job = jobs.submitPublication(actors.currentActor(), articleId, form.getChannelAccountId(),
-                    blankToNull(form.getCanonicalUrl()), form.getIdempotencyKey());
+                    blankToNull(form.getCanonicalUrl()), form.getIdempotencyKey(), parseSchedule(form.getScheduledAt()));
             return "redirect:/jobs/" + job.id();
         } catch (ApplicationException | IllegalArgumentException exception) {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
@@ -177,8 +337,9 @@ public class PortalPublishingController {
         }
         try {
             var submitted = jobs.submitPublications(actors.currentActor(), articleId, form.getChannelAccountIds(),
-                    blankToNull(form.getCanonicalUrl()), form.getIdempotencyKey());
-            redirectAttributes.addFlashAttribute("success", "已提交 " + submitted.size() + " 个平台发布任务");
+                    blankToNull(form.getCanonicalUrl()), form.getIdempotencyKey(), parseSchedule(form.getScheduledAt()));
+            redirectAttributes.addFlashAttribute("success", (form.getScheduledAt() == null || form.getScheduledAt().isBlank()
+                    ? "已提交 " : "已定时提交 ") + submitted.size() + " 个渠道发布任务");
         } catch (ApplicationException | IllegalArgumentException exception) {
             redirectAttributes.addFlashAttribute("error", exception.getMessage());
         }
@@ -252,19 +413,34 @@ public class PortalPublishingController {
     }
 
     private void populateChannels(Model model) {
+        if (!model.containsAttribute("selectedChannelView")) model.addAttribute("selectedChannelView", "api");
         model.addAttribute("accounts", publishing.listAccounts(actors.currentActor()).stream()
                 .map(ChannelAccountView::from).toList());
         model.addAttribute("apiChannels", ChannelCatalog.automated());
         model.addAttribute("manualChannels", ChannelCatalog.manualOnly());
         model.addAttribute("channelNames", channelNames());
+        Map<ChannelType, ChannelCatalog.ChannelDefinition> definitions = new java.util.EnumMap<>(ChannelType.class);
+        ChannelCatalog.all().forEach(definition -> definitions.put(definition.type(), definition));
+        model.addAttribute("channelDefinitions", definitions);
+        model.addAttribute("channelAccountStatusNames", PortalLabels.channelAccountStatusNames());
     }
 
     private Map<String, String> credentials(CreateChannelAccountForm form) {
         List<String> keys = ChannelCatalog.definition(form.getType()).credentialKeys();
         List<String> values = List.of(value(form.getCredentialOne()), value(form.getCredentialTwo()),
-                value(form.getCredentialThree()));
+                value(form.getCredentialThree()), value(form.getCredentialFour()), value(form.getCredentialFive()));
         Map<String, String> credentials = new LinkedHashMap<>();
         for (int index = 0; index < keys.size(); index++) credentials.put(keys.get(index), values.get(index));
+        return credentials;
+    }
+
+    private Map<String, String> credentials(ChannelType type, String... values) {
+        List<String> keys = ChannelCatalog.definition(type).credentialKeys();
+        Map<String, String> credentials = new LinkedHashMap<>();
+        for (int index = 0; index < keys.size(); index++) {
+            String value = index < values.length ? values[index] : null;
+            credentials.put(keys.get(index), value(value));
+        }
         return credentials;
     }
 
@@ -289,6 +465,15 @@ public class PortalPublishingController {
 
     private String value(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private Instant parseSchedule(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return LocalDateTime.parse(value.trim()).toInstant(ZoneOffset.UTC);
+        } catch (DateTimeParseException exception) {
+            throw new ApplicationException("SCHEDULED_AT_INVALID", "计划发布时间格式无效，请使用 UTC 时间", exception);
+        }
     }
 
     private record ArticleChannelKey(UUID articleId, ChannelType channelType) {

@@ -46,8 +46,12 @@
                 <span class="nav-icon" aria-hidden="true">↗</span><span>发布中心</span></a>
                 <button class="sidebar-nav-toggle" type="button" data-sidebar-toggle aria-controls="sidebar-publishing-subnav" th:attr="aria-expanded=${active == 'publishing' or active == 'article-publishing' or active == 'channels'}" aria-label="展开或收起发布管理子菜单"><span aria-hidden="true">⌄</span></button></div>
             <div id="sidebar-publishing-subnav" class="sidebar-subnav" role="group" aria-label="发布管理子菜单">
-                <a th:href="@{/publishing}" th:classappend="${active == 'publishing'} ? ' active'"
-                   th:attr="aria-current=${active == 'publishing' ? 'page' : null}">发布记录</a>
+                <a th:href="@{/publishing(tab='queue')}" th:classappend="${active == 'publishing' and selectedTab == 'queue'} ? ' active'"
+                   th:attr="aria-current=${active == 'publishing' and selectedTab == 'queue' ? 'page' : null}">待发布</a>
+                <a th:href="@{/publishing(tab='batches')}" th:classappend="${active == 'publishing' and selectedTab == 'batches'} ? ' active'"
+                   th:attr="aria-current=${active == 'publishing' and selectedTab == 'batches' ? 'page' : null}">执行批次</a>
+                <a th:href="@{/publishing(tab='records')}" th:classappend="${active == 'publishing' and selectedTab == 'records'} ? ' active'"
+                   th:attr="aria-current=${active == 'publishing' and selectedTab == 'records' ? 'page' : null}">发布记录</a>
                 <a th:href="@{/channels}" th:classappend="${active == 'channels'} ? ' active'"
                    th:attr="aria-current=${active == 'channels' ? 'page' : null}">渠道管理</a>
             </div>

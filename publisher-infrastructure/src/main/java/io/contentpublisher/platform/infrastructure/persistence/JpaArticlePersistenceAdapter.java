@@ -1,6 +1,9 @@
 package io.contentpublisher.platform.infrastructure.persistence;
 
 import io.contentpublisher.platform.application.DeletedRecord;
+import io.contentpublisher.platform.application.PagedResult;
+import io.contentpublisher.platform.domain.ArticleSourceType;
+import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.domain.Article;
 import io.contentpublisher.platform.domain.ArticleVersion;
@@ -102,6 +105,24 @@ public class JpaArticlePersistenceAdapter implements ArticleRepository {
     public List<Article> findRecentArticles(String tenantId, int limit) {
         return articles.findByTenantIdAndDeletedAtIsNullOrderByUpdatedAtDesc(tenantId, PageRequest.of(0, limit))
                 .stream().map(mapper::article).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResult<Article> searchArticles(String tenantId, String query, ArticleStatus status,
+                                               ArticleSourceType sourceType, String language,
+                                               int page, int pageSize) {
+        var result = articles.search(tenantId, query == null ? "" : query,
+                status == null ? null : status.name(), sourceType == null ? null : sourceType.name(),
+                language == null ? "" : language, PageRequest.of(page, pageSize));
+        return new PagedResult<>(result.getContent().stream().map(mapper::article).toList(), page, pageSize,
+                result.getTotalElements());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countArticles(String tenantId) {
+        return articles.countByTenantIdAndDeletedAtIsNull(tenantId);
     }
 
     @Override

@@ -114,10 +114,56 @@ class DurableJobIntegrationTest {
         assertThat(jobs.findJobById(tenantId, second.id())).isEmpty();
     }
 
+    @Test
+    void shouldWaitUntilScheduledTimeBeforeClaiming() {
+        Instant created = Instant.parse("2026-07-21T00:00:00Z");
+        Instant scheduledAt = created.plusSeconds(3_600);
+        Job scheduled = pendingPublication("tenant-scheduled", "scheduled-publication-001", created, scheduledAt);
+        jobs.save(scheduled);
+
+        assertThat(jobs.claimNext("worker-scheduled", scheduledAt.minusSeconds(1),
+                created.minusSeconds(300))).isEmpty();
+
+        Job claimed = jobs.claimNext("worker-scheduled", scheduledAt, created.minusSeconds(300)).orElseThrow();
+        assertThat(claimed.id()).isEqualTo(scheduled.id());
+        assertThat(claimed.status()).isEqualTo(JobStatus.RUNNING);
+        assertThat(claimed.scheduledAt()).isEqualTo(scheduledAt);
+    }
+
+    @Test
+    void shouldCancelPendingJobButRejectRunningJob() {
+        Instant created = Instant.parse("2026-07-21T02:00:00Z");
+        String tenantId = "tenant-cancel";
+        ActorContext actor = new ActorContext(tenantId, "editor");
+        Job pending = pendingPublication(tenantId, "cancel-publication-001", created,
+                created.plusSeconds(3_600));
+        jobs.save(pending);
+
+        Job cancelled = service.cancelJob(actor, pending.id());
+        assertThat(cancelled.status()).isEqualTo(JobStatus.CANCELLED);
+        assertThat(cancelled.progressPercent()).isEqualTo(100);
+        assertThat(cancelled.progressLabel()).isEqualTo("任务已取消");
+
+        Job running = new Job(UUID.randomUUID(), tenantId, "editor", JobType.PUBLISH_ARTICLE,
+                JobStatus.RUNNING, new JobPayload.PublishArticle(UUID.randomUUID(), UUID.randomUUID(), null),
+                "cancel-publication-002", "d".repeat(64), 1, 3, 35, "调用渠道接口", "等待平台响应",
+                UUID.randomUUID(), created, created, "worker-running", null, null, null, created, created);
+        jobs.save(running);
+
+        assertThatThrownBy(() -> service.cancelJob(actor, running.id()))
+                .isInstanceOfSatisfying(ApplicationException.class,
+                        exception -> assertThat(exception.code()).isEqualTo("JOB_NOT_CANCELLABLE"));
+        assertThat(jobs.findJobById(tenantId, running.id()).orElseThrow().status()).isEqualTo(JobStatus.RUNNING);
+    }
+
     private Job pendingPublication(String tenantId, String idempotencyKey, Instant created) {
+        return pendingPublication(tenantId, idempotencyKey, created, created);
+    }
+
+    private Job pendingPublication(String tenantId, String idempotencyKey, Instant created, Instant scheduledAt) {
         return new Job(UUID.randomUUID(), tenantId, "editor", JobType.PUBLISH_ARTICLE, JobStatus.PENDING,
                 new JobPayload.PublishArticle(UUID.randomUUID(), UUID.randomUUID(), null), idempotencyKey,
                 "c".repeat(64), 0, 3, 5, "等待执行", "等待后台工作器领取", UUID.randomUUID(),
-                created, null, null, null, null, null, created, created);
+                scheduledAt, null, null, null, null, null, created, created);
     }
 }

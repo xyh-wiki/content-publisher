@@ -15,6 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -91,6 +92,23 @@ class OfficialChannelPublishersTest {
     }
 
     @Test
+    void shouldUseCurrentGitHubDiscussionMutation() throws Exception {
+        AtomicReference<String> body = new AtomicReference<>();
+        start("/graphql", body,
+                "{\"data\":{\"createDiscussion\":{\"discussion\":{\"id\":\"discussion-1\",\"url\":\"https://github.com/org/repo/discussions/1\"}}}}}");
+        var publisher = new GitHubDiscussionsChannelPublisher(HttpClient.newHttpClient(), new ObjectMapper(),
+                properties());
+
+        var result = publisher.publish(account(ChannelType.GITHUB_DISCUSSIONS),
+                content(ChannelType.GITHUB_DISCUSSIONS), Map.of("token", "github-token",
+                        "repositoryId", "repository-id", "categoryId", "category-id"));
+
+        assertThat(result.externalId()).isEqualTo("discussion-1");
+        assertThat(body.get()).contains("CreateDiscussionInput", "createDiscussion")
+                .doesNotContain("AddDiscussionInput", "addDiscussion");
+    }
+
+    @Test
     void shouldRejectRedditBusinessErrors() throws Exception {
         AtomicReference<String> body = new AtomicReference<>();
         start("/api/submit", body, "{\"json\":{\"errors\":[[\"BAD_SR_NAME\",\"invalid\",\"sr\"]]}}");
@@ -100,6 +118,47 @@ class OfficialChannelPublishersTest {
                 Map.of("accessToken", "reddit-token", "subreddit", "java")))
                 .isInstanceOfSatisfying(ApplicationException.class,
                         exception -> assertThat(exception.code()).isEqualTo("CHANNEL_RESPONSE_REJECTED"));
+    }
+
+    @Test
+    void shouldRefreshAndRotateXCredentials() throws Exception {
+        AtomicReference<String> body = new AtomicReference<>();
+        AtomicReference<String> authorization = new AtomicReference<>();
+        startTokenServer(body, authorization,
+                "{\"access_token\":\"new-access\",\"refresh_token\":\"new-refresh\"}");
+        URI tokenUrl = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/token");
+        var refresher = new OfficialChannelCredentialRefresher(HttpClient.newHttpClient(), new ObjectMapper(),
+                properties(), tokenUrl, tokenUrl);
+
+        var result = refresher.refresh(account(ChannelType.X), Map.of(
+                "accessToken", "old-access", "refreshToken", "old-refresh",
+                "clientId", "client-id", "clientSecret", "client-secret"));
+
+        assertThat(result.refreshed()).isTrue();
+        assertThat(result.credentials()).containsEntry("accessToken", "new-access")
+                .containsEntry("refreshToken", "new-refresh");
+        assertThat(body.get()).contains("grant_type=refresh_token", "refresh_token=old-refresh", "client_id=client-id");
+        assertThat(authorization.get()).startsWith("Basic ");
+    }
+
+    @Test
+    void shouldRefreshRedditCredentialsAndKeepRefreshTokenWhenNotRotated() throws Exception {
+        AtomicReference<String> body = new AtomicReference<>();
+        AtomicReference<String> authorization = new AtomicReference<>();
+        startTokenServer(body, authorization, "{\"access_token\":\"reddit-access-new\"}");
+        URI tokenUrl = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/token");
+        var refresher = new OfficialChannelCredentialRefresher(HttpClient.newHttpClient(), new ObjectMapper(),
+                properties(), tokenUrl, tokenUrl);
+
+        var result = refresher.refresh(account(ChannelType.REDDIT), Map.of(
+                "accessToken", "old-access", "refreshToken", "reddit-refresh",
+                "clientId", "reddit-client", "clientSecret", "reddit-secret", "subreddit", "java"));
+
+        assertThat(result.credentials()).containsEntry("accessToken", "reddit-access-new")
+                .containsEntry("refreshToken", "reddit-refresh").containsEntry("subreddit", "java");
+        assertThat(body.get()).contains("grant_type=refresh_token", "refresh_token=reddit-refresh")
+                .doesNotContain("subreddit");
+        assertThat(authorization.get()).startsWith("Basic ");
     }
 
     @Test
@@ -135,6 +194,20 @@ class OfficialChannelPublishersTest {
             byte[] response = json.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(201, response.length);
             exchange.getResponseBody().write(response); exchange.close();
+        });
+        server.start();
+    }
+
+    private void startTokenServer(AtomicReference<String> body, AtomicReference<String> authorization,
+                                  String json) throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/token", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = json.getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
         });
         server.start();
     }

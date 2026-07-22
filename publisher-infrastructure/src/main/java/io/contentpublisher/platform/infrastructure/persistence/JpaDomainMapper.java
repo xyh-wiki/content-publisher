@@ -63,7 +63,8 @@ final class JpaDomainMapper {
     ChannelAccount channelAccount(ChannelAccountEntity entity) {
         return new ChannelAccount(entity.id, entity.tenantId, entity.type, entity.displayName, entity.baseUrl,
                 entity.encryptedCredentials, entity.idempotencyKey, entity.requestHash,
-                entity.credentialFingerprint, entity.accountVersion, entity.status, entity.createdBy, entity.updatedBy,
+                entity.credentialFingerprint, entity.accountVersion, entity.status, entity.verificationStatus,
+                entity.verificationMessage, entity.lastVerifiedAt, entity.createdBy, entity.updatedBy,
                 entity.createdAt, entity.updatedAt);
     }
 

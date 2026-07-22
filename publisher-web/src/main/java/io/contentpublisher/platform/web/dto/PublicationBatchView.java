@@ -24,6 +24,7 @@ public record PublicationBatchView(
         int activeCount,
         int succeededCount,
         int failedCount,
+        int cancelledCount,
         Instant createdAt,
         Instant updatedAt,
         List<Item> items) {
@@ -65,17 +66,20 @@ public record PublicationBatchView(
         int active = (int) items.stream().filter(item -> item.status().isActive()).count();
         int succeeded = (int) items.stream().filter(item -> item.status() == JobStatus.SUCCEEDED).count();
         int failed = (int) items.stream().filter(item -> item.status() == JobStatus.FAILED).count();
+        int cancelled = (int) items.stream().filter(item -> item.status() == JobStatus.CANCELLED).count();
         int percent = items.isEmpty() ? 0 : (int) Math.round(items.stream()
                 .mapToInt(Item::progressPercent).average().orElse(0));
         JobPayload.PublishArticle firstPayload = (JobPayload.PublishArticle) jobs.get(0).payload();
-        String status = active > 0 ? "RUNNING" : failed > 0 ? "FAILED" : "SUCCEEDED";
+        String status = active > 0 ? "RUNNING" : failed > 0 ? "FAILED"
+                : cancelled > 0 ? "CANCELLED" : "SUCCEEDED";
         String statusLabel = active > 0 ? "发布中" : failed > 0
-                ? (succeeded > 0 ? "部分失败" : "发布失败") : "全部完成";
+                ? (succeeded > 0 ? "部分失败" : "发布失败")
+                : cancelled > 0 ? (succeeded > 0 ? "部分取消" : "已取消") : "全部完成";
         Instant createdAt = jobs.stream().map(Job::createdAt).min(Instant::compareTo).orElseThrow();
         Instant updatedAt = jobs.stream().map(Job::updatedAt).max(Instant::compareTo).orElseThrow();
         return new PublicationBatchView(batchId, firstPayload.articleId(),
                 articleNames.getOrDefault(firstPayload.articleId(), firstPayload.articleId().toString()), status,
-                statusLabel, percent, items.size(), active, succeeded, failed, createdAt, updatedAt, items);
+                statusLabel, percent, items.size(), active, succeeded, failed, cancelled, createdAt, updatedAt, items);
     }
 
     public record Item(UUID jobId, UUID channelAccountId, String accountName, String channelName,
@@ -83,6 +87,10 @@ public record PublicationBatchView(
                        String errorCode, String errorMessage) {
         public boolean retryable() {
             return status == JobStatus.FAILED;
+        }
+
+        public boolean cancellable() {
+            return status == JobStatus.PENDING || status == JobStatus.RETRY_WAIT;
         }
 
         public String retryIdempotencyKey() {

@@ -105,9 +105,16 @@
         });
     });
 
-    document.querySelectorAll('form[data-confirm]').forEach(form => form.addEventListener('submit', event => {
-        if (!window.confirm(form.dataset.confirm || '确认执行此操作？')) event.preventDefault();
-    }));
+    const bindConfirmForms = (root = document) => {
+        root.querySelectorAll('form[data-confirm]').forEach(form => {
+            if (form.dataset.confirmBound === 'true') return;
+            form.dataset.confirmBound = 'true';
+            form.addEventListener('submit', event => {
+                if (!window.confirm(form.dataset.confirm || '确认执行此操作？')) event.preventDefault();
+            });
+        });
+    };
+    bindConfirmForms();
 
     document.querySelectorAll('[data-platform-launch]').forEach(link => link.addEventListener('click', event => {
         event.preventDefault();
@@ -149,8 +156,12 @@
 
     const channelSelect = document.querySelector('[data-channel-select]');
     const credentialFields = [...document.querySelectorAll('[data-credential-field]')];
+    const channelFormNote = document.querySelector('[data-channel-form-note]');
+    const channelNote = channelFormNote?.querySelector('[data-channel-note]');
+    const channelGuide = channelFormNote?.querySelector('[data-channel-guide]');
     const syncCredentials = () => {
-        const labels = channelSelect?.selectedOptions[0]?.dataset.credentialLabels?.split('|').filter(Boolean) || [];
+        const option = channelSelect?.selectedOptions[0];
+        const labels = option?.dataset.credentialLabels?.split('|').filter(Boolean) || [];
         credentialFields.forEach((field, index) => {
             const visible = index < labels.length;
             field.hidden = !visible;
@@ -159,6 +170,14 @@
             if (label) label.textContent = labels[index] || '';
             if (input) input.required = visible;
         });
+        const note = option?.dataset.channelNote || '';
+        const guideUrl = option?.dataset.guideUrl || '';
+        if (channelFormNote) channelFormNote.hidden = !note && !guideUrl;
+        if (channelNote) channelNote.textContent = note;
+        if (channelGuide) {
+            channelGuide.hidden = !guideUrl;
+            if (guideUrl) channelGuide.href = guideUrl;
+        }
     };
     if (channelSelect) {
         channelSelect.addEventListener('change', syncCredentials);
@@ -176,6 +195,145 @@
         source?.addEventListener('input', refresh);
         refresh();
     });
+
+    document.querySelectorAll('[data-dirty-form]').forEach(form => {
+        let dirty = false;
+        form.addEventListener('input', () => { dirty = true; });
+        form.addEventListener('change', () => { dirty = true; });
+        form.addEventListener('submit', () => { dirty = false; });
+        window.addEventListener('beforeunload', event => {
+            if (!dirty) return;
+            event.preventDefault();
+            event.returnValue = '';
+        });
+    });
+
+    const generationPresets = {
+        'project-quickstart': {
+            tone: '专业、清晰、面向首次使用者', minCharacters: '800', maxCharacters: '1800', maxKeywords: '10',
+            requiredSections: '项目概述\n适用场景\n安装与配置\n快速开始\n常见问题'
+        },
+        'project-architecture': {
+            tone: '专业、客观、突出架构取舍', minCharacters: '1200', maxCharacters: '2600', maxKeywords: '14',
+            requiredSections: '项目概述\n架构与模块\n核心流程\n关键技术取舍\n扩展方式\n总结'
+        },
+        'project-practices': {
+            tone: '务实、克制、面向生产环境', minCharacters: '1000', maxCharacters: '2400', maxKeywords: '12',
+            requiredSections: '适用场景\n生产配置\n安全与权限\n性能与可观测性\n常见故障\n上线检查清单'
+        },
+        'topic-tutorial': {
+            articleType: 'TUTORIAL', knowledgeLevel: 'MIXED', tone: '专业、清晰、循序渐进',
+            minCharacters: '1000', maxCharacters: '2400', maxKeywords: '12',
+            requiredSections: '学习目标\n前置知识\n分步教程\n完整示例\n常见问题\n总结'
+        },
+        'topic-practices': {
+            articleType: 'BEST_PRACTICES', knowledgeLevel: 'INTERMEDIATE', tone: '务实、客观、突出取舍',
+            minCharacters: '1000', maxCharacters: '2400', maxKeywords: '14',
+            requiredSections: '问题背景\n推荐做法\n反例与风险\n实施步骤\n检查清单\n总结'
+        },
+        'topic-troubleshooting': {
+            articleType: 'TROUBLESHOOTING', knowledgeLevel: 'INTERMEDIATE', tone: '直接、准确、便于排查',
+            minCharacters: '900', maxCharacters: '2200', maxKeywords: '12',
+            requiredSections: '问题现象\n影响范围\n排查步骤\n常见原因\n修复方法\n预防措施'
+        },
+        'website-overview': {
+            recommendationAngle: '说明网站定位、核心功能、适用人群、使用方式、优势与局限',
+            tone: '客观、克制、信息密度高', minCharacters: '700', maxCharacters: '1800', maxKeywords: '12',
+            requiredSections: '网站定位\n核心功能\n适用人群\n使用方式\n优势与局限\n总结'
+        },
+        'website-selection': {
+            recommendationAngle: '从使用门槛、核心能力、费用边界、数据与安全、适用场景进行选型评估',
+            tone: '中立、具体、突出决策依据', minCharacters: '900', maxCharacters: '2200', maxKeywords: '14',
+            requiredSections: '产品定位\n核心能力\n使用门槛\n费用与限制\n数据与安全\n适合与不适合的人群\n选型结论'
+        },
+        'website-guide': {
+            recommendationAngle: '围绕首次使用流程，说明准备工作、核心操作、常见问题和使用限制',
+            tone: '清晰、直接、面向首次使用者', minCharacters: '800', maxCharacters: '2000', maxKeywords: '10',
+            requiredSections: '使用前准备\n注册与配置\n核心操作\n常见问题\n使用限制\n总结'
+        }
+    };
+    document.querySelectorAll('[data-generation-preset]').forEach(select => {
+        const form = select.closest('[data-generation-form]');
+        const state = form?.querySelector('[data-preset-state]');
+        select.addEventListener('change', () => {
+            const preset = generationPresets[select.value];
+            if (!form || !preset) {
+                if (state) state.textContent = '保留当前设置。';
+                return;
+            }
+            Object.entries(preset).forEach(([name, value]) => {
+                const field = form.elements.namedItem(name);
+                if (!field) return;
+                field.value = value;
+                field.dispatchEvent(new Event('input', {bubbles: true}));
+                field.dispatchEvent(new Event('change', {bubbles: true}));
+            });
+            if (state) state.textContent = `${select.selectedOptions[0].textContent}预设已应用，可继续调整。`;
+        });
+    });
+
+    const editorWorkspace = document.querySelector('[data-editor-workspace]');
+    if (editorWorkspace) {
+        const tabs = [...editorWorkspace.querySelectorAll('[data-editor-tab]')];
+        const panels = [...editorWorkspace.querySelectorAll('[data-editor-panel]')];
+        let activeLanguage = 'zh';
+        const activateEditorTab = (tab, moveFocus = false) => {
+            const name = tab.dataset.editorTab;
+            if (name === 'zh' || name === 'en') activeLanguage = name;
+            tabs.forEach(item => {
+                const selected = item === tab;
+                item.setAttribute('aria-selected', String(selected));
+                item.tabIndex = selected ? 0 : -1;
+            });
+            panels.forEach(panel => { panel.hidden = panel.dataset.editorPanel !== name; });
+            if (moveFocus) tab.focus();
+        };
+        tabs.forEach((tab, index) => {
+            tab.addEventListener('click', () => activateEditorTab(tab));
+            tab.addEventListener('keydown', event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                let next = index;
+                if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+                if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+                if (event.key === 'Home') next = 0;
+                if (event.key === 'End') next = tabs.length - 1;
+                activateEditorTab(tabs[next], true);
+            });
+        });
+        activateEditorTab(tabs.find(tab => tab.getAttribute('aria-selected') === 'true') || tabs[0]);
+
+        const previewPanel = editorWorkspace.querySelector('[data-editor-panel="preview"]');
+        const previewTarget = previewPanel?.querySelector('[data-markdown-preview]');
+        const previewState = previewPanel?.querySelector('[data-preview-state]');
+        const renderPreview = async language => {
+            const source = editorWorkspace.querySelector(`[data-preview-source="${language || activeLanguage}"]`);
+            if (!source || !previewPanel || !previewTarget) return;
+            const previewTab = tabs.find(tab => tab.dataset.editorTab === 'preview');
+            if (previewTab) activateEditorTab(previewTab);
+            previewState?.classList.remove('error');
+            if (previewState) previewState.textContent = '正在生成预览…';
+            const csrf = editorWorkspace.querySelector('input[name="_csrf"]')?.value;
+            const headers = { 'Content-Type': 'application/json' };
+            if (csrf) headers['X-CSRF-TOKEN'] = csrf;
+            try {
+                const response = await fetch(previewPanel.dataset.previewUrl, {
+                    method: 'POST', headers, credentials: 'same-origin',
+                    body: JSON.stringify({ markdown: source.value || '' })
+                });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const payload = await response.json();
+                previewTarget.innerHTML = payload.html || '<p>暂无内容。</p>';
+                if (previewState) previewState.textContent = language === 'en' ? '英文预览已更新' : '中文预览已更新';
+            } catch (error) {
+                previewTarget.textContent = '预览生成失败。';
+                previewState?.classList.add('error');
+                if (previewState) previewState.textContent = '请检查登录状态或稍后重试。';
+            }
+        };
+        editorWorkspace.querySelectorAll('[data-render-preview]').forEach(button =>
+            button.addEventListener('click', () => renderPreview(button.dataset.renderPreview)));
+    }
 
     const publishedUrlInput = document.querySelector('#manual-external-url');
     const publishedUrlButton = document.querySelector('[data-validate-published-url]');
@@ -227,7 +385,7 @@
     if (jobLive?.dataset.jobActive === 'true') {
         const jobStatusLabels = {
             PENDING: '等待执行', RUNNING: '执行中', RETRY_WAIT: '等待重试',
-            SUCCEEDED: '执行成功', FAILED: '执行失败'
+            SUCCEEDED: '执行成功', FAILED: '执行失败', CANCELLED: '已取消'
         };
         const progressCard = document.querySelector('.job-progress-card');
         const progressTrack = document.querySelector('.job-progress-track');
@@ -268,7 +426,7 @@
                 }
                 renderProgress(job.progressPercent);
                 if (liveNote) liveNote.textContent = `刚刚同步 · ${new Date().toLocaleTimeString()}`;
-                if (['SUCCEEDED', 'FAILED'].includes(job.status)) {
+                if (['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(job.status)) {
                     progressCard?.classList.toggle('job-progress-failed', job.status === 'FAILED');
                     window.setTimeout(() => window.location.reload(), 500);
                 }
@@ -281,6 +439,47 @@
         };
         window.setInterval(pollJob, 2000);
         pollJob();
+    }
+
+    let publicationBatches = document.querySelector('[data-publication-batches]');
+    if (publicationBatches?.dataset.batchesActive === 'true') {
+        let refreshingBatches = false;
+        let batchRefreshTimer = null;
+        const refreshPublicationBatches = async () => {
+            if (refreshingBatches || document.hidden || publicationBatches.contains(document.activeElement)) return;
+            refreshingBatches = true;
+            const state = publicationBatches.querySelector('[data-batch-refresh-state]');
+            if (state) state.textContent = '正在同步…';
+            try {
+                const response = await fetch(window.location.href, {
+                    credentials: 'same-origin', cache: 'no-store', headers: {'Accept': 'text/html'}
+                });
+                if (!response.ok) throw new Error(`批次状态请求失败: ${response.status}`);
+                const nextDocument = new DOMParser().parseFromString(await response.text(), 'text/html');
+                const nextBatches = nextDocument.querySelector('[data-publication-batches]');
+                if (!nextBatches) throw new Error('批次区域不存在');
+                publicationBatches.replaceWith(nextBatches);
+                publicationBatches = nextBatches;
+                bindConfirmForms(publicationBatches);
+                const currentSummary = document.querySelector('.publishing-summary');
+                const nextSummary = nextDocument.querySelector('.publishing-summary');
+                if (currentSummary && nextSummary) currentSummary.innerHTML = nextSummary.innerHTML;
+                const currentTabs = document.querySelector('.workspace-tabs');
+                const nextTabs = nextDocument.querySelector('.workspace-tabs');
+                if (currentTabs && nextTabs) currentTabs.innerHTML = nextTabs.innerHTML;
+                const refreshedState = publicationBatches.querySelector('[data-batch-refresh-state]');
+                const remainsActive = publicationBatches.dataset.batchesActive === 'true';
+                if (refreshedState) refreshedState.textContent = remainsActive
+                    ? `刚刚同步 · ${new Date().toLocaleTimeString()}` : '批次已完成';
+                if (!remainsActive && batchRefreshTimer) window.clearInterval(batchRefreshTimer);
+            } catch (_error) {
+                const failedState = publicationBatches.querySelector('[data-batch-refresh-state]');
+                if (failedState) failedState.textContent = '同步失败，稍后自动重试';
+            } finally {
+                refreshingBatches = false;
+            }
+        };
+        batchRefreshTimer = window.setInterval(refreshPublicationBatches, 5000);
     }
 
     const monitorScreen = document.querySelector('[data-monitor-screen]');

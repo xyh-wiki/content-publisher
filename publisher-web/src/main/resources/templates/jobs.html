@@ -8,15 +8,23 @@
     <aside th:replace="~{fragments/app-shell :: sidebar('jobs')}"></aside>
     <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('运行中心', '查看系统监控与后台任务执行状态')}"></header>
         <main class="page-content">
-            <section class="page-header"><div><p class="section-kicker">运行维护</p><h2>任务队列</h2><p>统一查看导入、生成和发布任务；业务内容与发布结果分别回到对应模块处理。</p></div>
+            <section class="page-header compact-page-header"><div><h2>任务队列</h2><p>统一查看导入、生成和发布任务；业务内容与发布结果分别回到对应模块处理。</p></div>
                 <div class="header-actions"><a class="secondary-link" th:href="@{/monitoring}">监控大屏</a></div></section>
             <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
-            <section class="card record-card"><div class="card-header"><div><p class="section-kicker">后台任务</p><h3>近期任务</h3><p>执行中任务不可删除；结束后的异常任务可进入详情排查或移入回收站。</p></div><span class="count-badge" th:text="${jobs.size()}">0</span></div>
+            <form class="filter-toolbar" method="get" th:action="@{/jobs}">
+                <div class="filter-search"><label for="job-search">搜索</label><input id="job-search" name="q" maxlength="120" th:value="${searchQuery}" placeholder="进度、详情或失败原因"></div>
+                <div class="filter-field"><label for="job-type">任务类型</label><select id="job-type" name="type"><option value="">全部类型</option><option th:each="option : ${jobTypeOptions}" th:value="${option}" th:text="${jobTypeNames.get(option)}" th:selected="${selectedType == option}"></option></select></div>
+                <div class="filter-field"><label for="job-status">状态</label><select id="job-status" name="status"><option value="">全部状态</option><option th:each="option : ${jobStatusOptions}" th:value="${option}" th:text="${jobStatusNames.get(option)}" th:selected="${selectedStatus == option}"></option></select></div>
+                <div class="filter-field"><label for="job-size">每页</label><select id="job-size" name="size"><option value="20" th:selected="${jobPage.pageSize == 20}">20</option><option value="50" th:selected="${jobPage.pageSize == 50}">50</option></select></div>
+                <div class="filter-actions"><button class="primary-button" type="submit">筛选</button><a class="secondary-link" th:href="@{/jobs}">重置</a></div>
+            </form>
+            <section class="workspace-panel"><header class="workspace-panel-header"><div><h3>后台任务</h3><p>执行中任务不可删除；终态任务可进入详情排查或移入回收站。</p></div><strong th:text="|${jobPage.totalItems} 条|">0 条</strong></header>
                 <div class="empty-state" th:if="${#lists.isEmpty(jobs)}">暂无后台任务。</div><div class="record-list" th:unless="${#lists.isEmpty(jobs)}">
                     <div class="record-row" th:each="job : ${jobs}"><a class="record-row-main" th:href="@{/jobs/{id}(id=${job.id})}"><span><strong th:text="${jobTypeNames.get(job.type)}">任务</strong><small th:text="|${job.progressLabel} · ${job.updatedAt}|">time</small></span>
                         <span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${jobStatusNames.get(job.status)}">等待执行</span></a>
                         <form th:if="${canAdmin and !job.status.isActive()}" th:action="@{/jobs/{id}/delete(id=${job.id})}" method="post" data-confirm="确认将这条终态任务移入回收站？若它生成了文章，文章及关联记录也会一并移入。"><button class="danger-link mini-button" type="submit">移入回收站</button></form></div>
                 </div>
+                <nav class="pagination" th:if="${jobPage.totalPages > 1}" aria-label="任务分页"><a th:if="${jobPage.hasPrevious()}" th:href="@{/jobs(q=${searchQuery},type=${selectedType},status=${selectedStatus},size=${jobPage.pageSize},page=${jobPage.previousPage()})}">上一页</a><span th:text="|第 ${jobPage.page + 1} / ${jobPage.totalPages} 页|">第 1 页</span><a th:if="${jobPage.hasNext()}" th:href="@{/jobs(q=${searchQuery},type=${selectedType},status=${selectedStatus},size=${jobPage.pageSize},page=${jobPage.nextPage()})}">下一页</a></nav>
             </section>
         </main>
     </div>

@@ -11,4 +11,5 @@ public interface ProjectRepository {
     Optional<Project> findProjectById(String tenantId, UUID id);
     Optional<Project> findByGitUrl(String tenantId, String gitUrl);
     List<Project> findRecentProjects(String tenantId, int limit);
+    long countProjects(String tenantId);
 }

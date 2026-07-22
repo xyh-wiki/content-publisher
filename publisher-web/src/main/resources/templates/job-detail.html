@@ -4,7 +4,9 @@
     <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
 <body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('jobs')}"></aside><div class="app-main">
     <header th:replace="~{fragments/app-shell :: topbar('后台任务', '查看导入、生成或发布任务的实时状态')}"></header><main class="page-content narrow">
+        <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
         <section class="page-header"><div><p class="section-kicker">后台任务</p><h2>任务执行详情</h2><p th:text="|${jobDisplayName} · ${jobStatusLabel}|">任务状态</p></div><div class="header-actions"><a class="secondary-link" th:href="@{/jobs}">返回任务队列</a>
+            <form th:if="${canEdit and (job.status.name() == 'PENDING' or job.status.name() == 'RETRY_WAIT')}" class="inline-action-form" th:action="@{/jobs/{id}/cancel(id=${job.id})}" method="post" data-confirm="取消后任务不会继续执行，确认取消？"><button class="danger-link" type="submit">取消任务</button></form>
             <form th:if="${canAdmin and !active}" class="inline-action-form" th:action="@{/jobs/{id}/delete(id=${job.id})}" method="post" data-confirm="确认将这条终态任务移入回收站？若它生成了文章，文章及关联记录也会一并移入。"><button class="danger-link" type="submit">移入回收站</button></form></div></section>
         <section class="card job-hero" data-job-live th:attr="data-job-active=${active},data-job-status-url=@{/api/v1/jobs/{id}(id=${job.id})}"><div><span class="status-pill" data-job-status th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${jobStatusLabel}">等待执行</span><h2 th:text="${jobDisplayName}">生成主题教程</h2>
             <p data-job-summary th:text="${active} ? '任务正在后台执行，进度将自动更新。' : '任务已经结束，结果和异常信息已持久化。'">任务状态</p></div><div class="progress-number"><strong data-job-attempt th:text="|${job.attempt}/${job.maxAttempts}|">0/4</strong><span>执行次数</span></div></section>

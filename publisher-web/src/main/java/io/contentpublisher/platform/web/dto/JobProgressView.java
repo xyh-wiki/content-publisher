@@ -8,6 +8,7 @@ public record JobProgressView(int percent, String label, String detail) {
             case PENDING, RUNNING, RETRY_WAIT -> persisted(job);
             case SUCCEEDED -> new JobProgressView(100, "执行完成", "结果已经保存，可以继续下一步操作");
             case FAILED -> new JobProgressView(100, "执行失败", "任务已经停止，请根据异常信息调整后重试");
+            case CANCELLED -> new JobProgressView(100, "任务已取消", "任务在执行前已取消，不会继续处理");
         };
     }
 

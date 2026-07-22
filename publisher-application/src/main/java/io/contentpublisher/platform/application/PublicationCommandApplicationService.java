@@ -4,6 +4,7 @@ import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
 import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
+import io.contentpublisher.platform.application.port.ChannelCredentialRefresher;
 import io.contentpublisher.platform.application.port.ChannelPublisher;
 import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.application.port.ManualPublicationRepository;
@@ -15,6 +16,7 @@ import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.domain.ChannelAccount;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.ChannelVerificationStatus;
 import io.contentpublisher.platform.domain.ContentFormat;
 import io.contentpublisher.platform.domain.ManualPublication;
 import io.contentpublisher.platform.domain.Publication;
@@ -37,6 +39,7 @@ public final class PublicationCommandApplicationService {
     private final ManualPublicationRepository manualPublications;
     private final CredentialVault credentialVault;
     private final ChannelEndpointPolicy endpointPolicy;
+    private final ChannelCredentialRefresher credentialRefresher;
     private final Map<ChannelType, ChannelPublisher> publishers;
     private final AuditRecorder auditRecorder;
     private final PlatformContentAdapter contentAdapter;
@@ -49,12 +52,25 @@ public final class PublicationCommandApplicationService {
                                                 ChannelEndpointPolicy endpointPolicy,
                                                 List<ChannelPublisher> publishers, AuditRecorder auditRecorder,
                                                 PlatformContentAdapter contentAdapter, Clock clock) {
+        this(articles, accounts, publications, manualPublications, credentialVault, endpointPolicy,
+                ChannelCredentialRefresher.noop(), publishers, auditRecorder, contentAdapter, clock);
+    }
+
+    public PublicationCommandApplicationService(ArticleRepository articles, ChannelAccountRepository accounts,
+                                                PublicationRepository publications,
+                                                ManualPublicationRepository manualPublications,
+                                                CredentialVault credentialVault,
+                                                ChannelEndpointPolicy endpointPolicy,
+                                                ChannelCredentialRefresher credentialRefresher,
+                                                List<ChannelPublisher> publishers, AuditRecorder auditRecorder,
+                                                PlatformContentAdapter contentAdapter, Clock clock) {
         this.articles = articles;
         this.accounts = accounts;
         this.publications = publications;
         this.manualPublications = manualPublications;
         this.credentialVault = credentialVault;
         this.endpointPolicy = endpointPolicy;
+        this.credentialRefresher = credentialRefresher;
         this.publishers = new EnumMap<>(ChannelType.class);
         publishers.forEach(publisher -> this.publishers.put(publisher.channelType(), publisher));
         this.auditRecorder = auditRecorder;
@@ -103,6 +119,37 @@ public final class PublicationCommandApplicationService {
         if (account.status() != ChannelAccountStatus.ACTIVE) {
             throw new ApplicationException("CHANNEL_ACCOUNT_DISABLED", "渠道账号已停用");
         }
+        if (account.verificationStatus() == ChannelVerificationStatus.FAILED) {
+            throw new ApplicationException("CHANNEL_CONNECTION_NOT_READY", "渠道连接验证失败，请先更新凭据并重新测试连接");
+        }
+        ChannelCatalog.ChannelDefinition definition = ChannelCatalog.definition(account.type());
+        if (!definition.existingAccountOperational()) {
+            throw new ApplicationException("CHANNEL_CONFIGURATION_UNAVAILABLE", definition.availabilityNote());
+        }
+        if (!publishers.containsKey(account.type())) {
+            throw new ApplicationException("CHANNEL_NOT_SUPPORTED", "当前渠道尚未配置发布适配器");
+        }
+        String verifiedBaseUrl = endpointPolicy.validateAndNormalize(account.type(), account.baseUrl());
+        if (!verifiedBaseUrl.equals(account.baseUrl())) {
+            throw new ApplicationException("CHANNEL_ENDPOINT_REJECTED", "渠道地址与已保存的安全地址不一致");
+        }
+        Map<String, String> credentials = credentialVault.decrypt(account.encryptedCredentials());
+        if (!credentials.keySet().equals(new java.util.HashSet<>(definition.credentialKeys()))) {
+            throw new ApplicationException("CHANNEL_CREDENTIALS_INVALID", "渠道凭据字段不完整，请重新轮换凭据");
+        }
+        contentAdapter.adapt(article, account.type(), null);
+    }
+
+    public PublicationPreflightResult preflight(ActorContext actor, UUID articleId, UUID accountId) {
+        try {
+            assertPublishable(actor, articleId, accountId);
+            ChannelAccount account = getAccount(actor, accountId);
+            String message = account.verificationStatus() == ChannelVerificationStatus.SUCCEEDED
+                    ? "内容、账号和连接状态检查通过" : "基础检查通过，建议发布前测试连接";
+            return PublicationPreflightResult.ready(accountId, message);
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            return PublicationPreflightResult.blocked(accountId, exception.getMessage());
+        }
     }
 
     public Publication publish(ActorContext actor, UUID articleId, UUID accountId, String canonicalUrl,
@@ -143,10 +190,12 @@ public final class PublicationCommandApplicationService {
         try {
             progress.update(52, "适配平台格式", "正在按照目标平台限制转换标题、正文和链接");
             AdaptedContent adaptedContent = contentAdapter.adapt(article, account.type(), canonicalUrl);
+            RefreshedCredentials refreshed = refreshCredentials(actor, account);
+            account = refreshed.account();
             progress.update(68, "调用平台接口", "内容适配完成，正在等待目标平台返回发布结果");
             result = publisher.publish(account,
                     new ChannelPublisher.PublishContent(article, adaptedContent, canonicalUrl),
-                    credentialVault.decrypt(account.encryptedCredentials()));
+                    refreshed.credentials());
         } catch (ApplicationException exception) {
             progress.update(88, "记录发布失败", "平台返回失败，正在保存错误代码和失败信息");
             Instant failedAt = clock.instant();
@@ -221,6 +270,35 @@ public final class PublicationCommandApplicationService {
                 .orElseThrow(() -> new ApplicationException("CHANNEL_ACCOUNT_NOT_FOUND", "渠道账号不存在"));
     }
 
+    private RefreshedCredentials refreshCredentials(ActorContext actor, ChannelAccount account) {
+        Map<String, String> currentCredentials = credentialVault.decrypt(account.encryptedCredentials());
+        ChannelCredentialRefreshResult refreshResult = credentialRefresher.refresh(account, currentCredentials);
+        if (!refreshResult.refreshed()) return new RefreshedCredentials(account, refreshResult.credentials());
+
+        ChannelAccount current = account;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            String fingerprint = credentialVault.fingerprint(refreshResult.credentials());
+            Instant now = clock.instant();
+            ChannelAccount candidate = new ChannelAccount(current.id(), current.tenantId(), current.type(),
+                    current.displayName(), current.baseUrl(), credentialVault.encrypt(refreshResult.credentials()),
+                    current.idempotencyKey(), current.requestHash(), fingerprint, current.version() + 1,
+                    current.status(), current.verificationStatus(), current.verificationMessage(),
+                    current.lastVerifiedAt(), current.createdBy(), actor.subject(), current.createdAt(), now);
+            ChannelAccount saved = accounts.updateIfVersionMatches(candidate, current.version()).orElse(null);
+            if (saved != null) {
+                auditRecorder.record(actor, "CHANNEL_CREDENTIALS_AUTO_REFRESHED", "CHANNEL_ACCOUNT", saved.id(),
+                        Map.of("channelType", saved.type().name(), "version", Integer.toString(saved.version())));
+                return new RefreshedCredentials(saved, refreshResult.credentials());
+            }
+            ChannelAccount latest = getAccount(actor, account.id());
+            if (!latest.credentialFingerprint().equals(account.credentialFingerprint())) {
+                return new RefreshedCredentials(latest, credentialVault.decrypt(latest.encryptedCredentials()));
+            }
+            current = latest;
+        }
+        throw new ApplicationException("CHANNEL_ACCOUNT_VERSION_CONFLICT", "渠道授权已被其他请求修改，请重试发布");
+    }
+
     private Article updateArticleStatus(Article article, ArticleStatus status, String subject) {
         return articles.save(new Article(article.id(), article.tenantId(), article.origin(), article.generationJobId(),
                 article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),
@@ -239,5 +317,8 @@ public final class PublicationCommandApplicationService {
     private String limited(String value) {
         if (value == null) return null;
         return value.length() <= 2000 ? value : value.substring(0, 2000);
+    }
+
+    private record RefreshedCredentials(ChannelAccount account, Map<String, String> credentials) {
     }
 }

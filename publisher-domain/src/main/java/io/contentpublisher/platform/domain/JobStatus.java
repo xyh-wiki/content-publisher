@@ -5,7 +5,8 @@ public enum JobStatus {
     RUNNING,
     RETRY_WAIT,
     SUCCEEDED,
-    FAILED;
+    FAILED,
+    CANCELLED;
 
     public boolean isActive() {
         return this == PENDING || this == RUNNING || this == RETRY_WAIT;

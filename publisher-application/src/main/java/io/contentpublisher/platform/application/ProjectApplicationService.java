@@ -9,6 +9,8 @@ import io.contentpublisher.platform.application.port.RepositorySnapshotStore;
 import io.contentpublisher.platform.application.port.WebsiteInspector;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.Article;
+import io.contentpublisher.platform.domain.ArticleSourceType;
+import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.domain.GenerationPolicy;
 import io.contentpublisher.platform.domain.Project;
 import io.contentpublisher.platform.domain.TopicBrief;
@@ -68,6 +70,22 @@ public final class ProjectApplicationService {
         return articles.findRecentArticles(actor.tenantId(), requireListLimit(limit));
     }
 
+    public PagedResult<Article> searchArticles(ActorContext actor, String query, ArticleStatus status,
+                                               ArticleSourceType sourceType, String language,
+                                               int page, int pageSize) {
+        requirePage(page, pageSize);
+        return articles.searchArticles(actor.tenantId(), normalizeQuery(query), status, sourceType,
+                normalizeLanguage(language), page, pageSize);
+    }
+
+    public long countProjects(ActorContext actor) {
+        return projects.countProjects(actor.tenantId());
+    }
+
+    public long countArticles(ActorContext actor) {
+        return articles.countArticles(actor.tenantId());
+    }
+
     public List<Article> listProjectArticles(ActorContext actor, UUID projectId, int limit) {
         getProject(actor, projectId);
         return articles.findRecentByProjectId(actor.tenantId(), projectId, requireListLimit(limit));
@@ -114,5 +132,24 @@ public final class ProjectApplicationService {
     private int requireListLimit(int limit) {
         if (limit < 1 || limit > 100) throw new IllegalArgumentException("列表查询数量必须在 1 到 100 之间");
         return limit;
+    }
+
+    private void requirePage(int page, int pageSize) {
+        if (page < 0 || page > 100_000 || pageSize < 1 || pageSize > 100) {
+            throw new IllegalArgumentException("分页参数无效");
+        }
+    }
+
+    private String normalizeQuery(String value) {
+        if (value == null || value.isBlank()) return "";
+        String normalized = value.trim();
+        return normalized.length() <= 120 ? normalized : normalized.substring(0, 120);
+    }
+
+    private String normalizeLanguage(String value) {
+        if (value == null || value.isBlank()) return "";
+        String normalized = value.trim();
+        if (normalized.length() > 20) throw new IllegalArgumentException("语言代码不能超过 20 个字符");
+        return normalized;
     }
 }

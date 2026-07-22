@@ -4,6 +4,7 @@ import io.contentpublisher.platform.web.security.LocalUserPrincipal;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
+import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -48,16 +49,18 @@ public class PortalController {
                 .map(authority -> authority.getAuthority().replaceFirst("^ROLE_", ""))
                 .sorted().toList());
         var actor = actors.currentActor();
-        var projectList = projects.listProjects(actor, 50);
-        var articleList = projects.listArticles(actor, 50);
+        var articleList = projects.listArticles(actor, 6);
         var jobList = jobs.listJobs(actor, 20);
-        model.addAttribute("projectCount", projectList.size());
-        model.addAttribute("articleCount", articleList.size());
-        model.addAttribute("approvedCount", articleList.stream()
-                .filter(article -> article.status().name().equals("APPROVED")).count());
-        model.addAttribute("channelCount", publishing.listAccounts(actor).size());
-        model.addAttribute("recentArticles", articleList.stream().limit(6).toList());
+        model.addAttribute("projectCount", projects.countProjects(actor));
+        model.addAttribute("articleCount", projects.countArticles(actor));
+        model.addAttribute("approvedCount", projects.searchArticles(actor, "", ArticleStatus.APPROVED,
+                null, "", 0, 1).totalItems());
+        model.addAttribute("channelCount", publishing.countAccounts(actor));
+        model.addAttribute("recentArticles", articleList);
         model.addAttribute("recentJobs", jobList.stream().limit(5).toList());
+        model.addAttribute("articleStatusNames", PortalLabels.articleStatusNames());
+        model.addAttribute("jobTypeNames", PortalLabels.jobTypeNames());
+        model.addAttribute("jobStatusNames", PortalLabels.jobStatusNames());
         return "dashboard";
     }
 

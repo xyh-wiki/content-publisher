@@ -67,6 +67,10 @@ public final class PublishingApplicationService {
         return accounts.listAccounts(actor);
     }
 
+    public long countAccounts(ActorContext actor) {
+        return accounts.countAccounts(actor);
+    }
+
     public ChannelAccount getAccount(ActorContext actor, UUID accountId) {
         return accounts.getAccount(actor, accountId);
     }
@@ -79,6 +83,15 @@ public final class PublishingApplicationService {
     public ChannelAccount rotateCredentials(ActorContext actor, UUID accountId, int expectedVersion,
                                             Map<String, String> credentials) {
         return accounts.rotateCredentials(actor, accountId, expectedVersion, credentials);
+    }
+
+    public ChannelAccount updateAccountProfile(ActorContext actor, UUID accountId, int expectedVersion,
+                                               String displayName, String baseUrl) {
+        return accounts.updateAccountProfile(actor, accountId, expectedVersion, displayName, baseUrl);
+    }
+
+    public ChannelAccount verifyConnection(ActorContext actor, UUID accountId) {
+        return accounts.verifyConnection(actor, accountId);
     }
 
     public Article getArticle(ActorContext actor, UUID articleId) {
@@ -115,6 +128,10 @@ public final class PublishingApplicationService {
         return articles.rejectArticle(actor, articleId, reason);
     }
 
+    public Article restoreArticleVersion(ActorContext actor, UUID articleId, int expectedVersion, int sourceVersion) {
+        return articles.restoreVersion(actor, articleId, expectedVersion, sourceVersion);
+    }
+
     public AdaptedContent adaptContent(ActorContext actor, UUID articleId, ChannelType channelType,
                                        String canonicalUrl) {
         return commands.adaptContent(actor, articleId, channelType, canonicalUrl);
@@ -129,6 +146,10 @@ public final class PublishingApplicationService {
 
     public void assertPublishable(ActorContext actor, UUID articleId, UUID accountId) {
         commands.assertPublishable(actor, articleId, accountId);
+    }
+
+    public PublicationPreflightResult preflight(ActorContext actor, UUID articleId, UUID accountId) {
+        return commands.preflight(actor, articleId, accountId);
     }
 
     public Publication publish(ActorContext actor, UUID articleId, UUID accountId, String canonicalUrl,
@@ -163,6 +184,14 @@ public final class PublishingApplicationService {
 
     public List<PublicationRecord> listPublicationRecords(ActorContext actor, int limit) {
         return queries.listPublicationRecords(actor, limit);
+    }
+
+    public PagedResult<PublicationRecord> searchPublicationRecords(ActorContext actor, String query,
+                                                                   ChannelType channelType,
+                                                                   io.contentpublisher.platform.domain.PublicationStatus status,
+                                                                   PublicationMethod method,
+                                                                   int page, int pageSize) {
+        return queries.searchPublicationRecords(actor, query, channelType, status, method, page, pageSize);
     }
 
     public List<PublicationRecord> listPublicationRecordsForArticles(ActorContext actor, List<UUID> articleIds) {

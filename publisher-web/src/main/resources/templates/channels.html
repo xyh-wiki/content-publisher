@@ -1,28 +1,60 @@
 <!doctype html>
-<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex,nofollow"><title>渠道管理 · Content Publisher</title><link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
-    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
-<body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('channels')}"></aside>
-    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('渠道管理', '配置 API 账号并查看人工发布平台')}"></header>
-        <main class="page-content"><section class="page-header"><div><p class="section-kicker">渠道管理</p><h2>发布渠道</h2><p>API 凭据加密保存且不回显；不支持 API 的平台无需保存账号密码，发布时跳转到官方登录页面。</p></div><div class="header-actions"><a class="secondary-link" th:href="@{/publishing}">发布中心</a></div></section>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><title>渠道管理 · Content Publisher</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script>
+</head>
+<body class="app-page">
+<div class="app-layout">
+    <aside th:replace="~{fragments/app-shell :: sidebar('channels')}"></aside>
+    <div class="app-main">
+        <header th:replace="~{fragments/app-shell :: topbar('渠道管理', '维护 API 账号和人工发布平台')}"></header>
+        <main class="page-content">
+            <section class="page-header compact-page-header"><div><h2>发布渠道</h2><p>API 凭据加密保存且不回显；人工平台只保存发布结果，不保存账号密码和 Cookie。</p></div><div class="header-actions"><a class="secondary-link" th:href="@{/publishing}">返回发布中心</a></div></section>
             <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
 
-            <div class="content-aside-grid"><section class="card"><div class="card-header"><div><p class="section-kicker">接口账号</p><h3>已连接账号</h3><p>自动发布只调用官方 API；凭据轮换和停用仍可通过管理 API 完成。</p></div><span class="count-badge" th:text="${accounts.size()}">0</span></div>
-                <div class="empty-state" th:if="${#lists.isEmpty(accounts)}">尚未添加 API 发布账号。</div><div class="table-wrap" th:unless="${#lists.isEmpty(accounts)}"><table><thead><tr><th>账号</th><th>平台</th><th>状态</th><th>版本</th><th>更新时间</th></tr></thead>
-                    <tbody><tr th:each="account : ${accounts}"><td><strong th:text="${account.displayName}">账号</strong><small th:text="${account.baseUrl}">url</small></td><td th:text="${channelNames.get(account.type)}">平台</td>
-                        <td><span class="status-pill" th:classappend="| status-${account.status.name().toLowerCase()}|" th:text="${account.status}">ACTIVE</span></td><td th:text="|v${account.version}|">v1</td><td th:text="${account.updatedAt}">time</td></tr></tbody></table></div></section>
-                <aside class="sticky-column" th:if="${canAdmin}"><section class="card"><div class="card-header"><div><p class="section-kicker">添加账号</p><h3>添加发布账号</h3></div><span class="service-badge">管理员</span></div>
-                    <form class="stack-form" th:action="@{/channels}" th:object="${channelAccountForm}" method="post" autocomplete="off"><input type="hidden" th:field="*{idempotencyKey}">
-                        <div class="field"><label>渠道类型</label><select th:field="*{type}" data-channel-select required><option value="">选择 API 渠道</option><option th:each="channel : ${apiChannels}" th:value="${channel.type()}" th:text="${channel.displayName()}" th:attr="data-credential-labels=${channel.credentialLabelsAttribute()}">平台</option></select></div>
-                        <div class="field"><label>账号显示名称</label><input th:field="*{displayName}" maxlength="120" placeholder="例如：官方技术账号" required></div>
-                        <div class="field"><label>站点 Base URL</label><input th:field="*{baseUrl}" type="url" maxlength="2048" placeholder="固定官方 API 可留空"><small>WordPress、Discourse、Mastodon 和 Ghost 必须填写经服务器允许的 HTTPS 站点。</small></div>
-                        <div class="field" data-credential-field><label>凭据 1</label><input th:field="*{credentialOne}" type="password" maxlength="4000" autocomplete="new-password"></div>
-                        <div class="field" data-credential-field><label>凭据 2</label><input th:field="*{credentialTwo}" type="password" maxlength="4000" autocomplete="new-password"></div>
-                        <div class="field" data-credential-field><label>凭据 3</label><input th:field="*{credentialThree}" type="password" maxlength="4000" autocomplete="new-password"></div>
-                        <button class="primary-button" type="submit">加密保存账号</button></form></section></aside></div>
+            <nav class="workspace-tabs" aria-label="渠道管理视图">
+                <a th:href="@{/channels(view='api')}" th:classappend="${selectedChannelView == 'api'} ? ' active'" th:attr="aria-current=${selectedChannelView == 'api' ? 'page' : null}">API 账号 <span th:text="${accounts.size()}">0</span></a>
+                <a th:href="@{/channels(view='manual')}" th:classappend="${selectedChannelView == 'manual'} ? ' active'" th:attr="aria-current=${selectedChannelView == 'manual' ? 'page' : null}">人工平台 <span th:text="${manualChannels.size()}">0</span></a>
+            </nav>
 
-            <section class="card"><div class="card-header"><div><p class="section-kicker">人工发布渠道</p><h3>跳转登录发布平台</h3><p>平台账号密码不会进入本系统。发布时仅打开官方创作页，并保存最终发布链接和内容快照。</p></div><span class="card-badge" th:text="|${manualChannels.size()} 个平台|">8</span></div>
-                <div class="channel-grid"><article class="channel-card" th:each="channel : ${manualChannels}"><div class="channel-card-header"><span class="channel-logo" th:text="${#strings.substring(channel.displayName(),0,1)}">P</span><span class="format-badge" th:text="${channel.contentFormat()}">MARKDOWN</span></div>
-                    <h4 th:text="${channel.displayName()}">平台</h4><p th:text="${channel.contentHint()}">适配格式</p><div class="channel-card-footer"><span class="service-badge">无需凭据</span><span class="channel-action">文章页使用</span></div></article></div></section>
+            <section class="workspace-panel" th:if="${selectedChannelView == 'api'}">
+                <header class="workspace-panel-header"><div><h3>API 发布账号</h3><p>账号状态、系统支持状态和凭据版本集中维护。</p></div><strong th:text="|${accounts.size()} 个账号|">0 个账号</strong></header>
+
+                <details class="channel-create-panel" th:if="${canAdmin}" th:attr="open=${#lists.isEmpty(accounts) ? 'open' : null}">
+                    <summary><span><strong>添加 API 账号</strong><small>选择渠道后按对应字段填写凭据</small></span><span aria-hidden="true">＋</span></summary>
+                    <form class="stack-form channel-create-form" th:action="@{/channels}" th:object="${channelAccountForm}" method="post" autocomplete="off"><input type="hidden" th:field="*{idempotencyKey}">
+                        <div class="form-grid"><div class="field"><label for="channel-type">渠道类型</label><select id="channel-type" th:field="*{type}" data-channel-select required><option value="">选择 API 渠道</option><option th:each="channel : ${apiChannels}" th:value="${channel.type()}" th:text="|${channel.displayName()} · ${channel.availabilityLabel()}|" th:disabled="${!channel.configurationAllowed()}" th:attr="data-credential-labels=${channel.credentialLabelsAttribute()},data-channel-note=${channel.availabilityNote()},data-guide-url=${channel.applicationGuideUrl()}">平台</option></select></div>
+                            <div class="field"><label for="channel-display-name">账号显示名称</label><input id="channel-display-name" th:field="*{displayName}" maxlength="120" placeholder="例如：官方技术账号" required></div></div>
+                        <div class="field"><label for="channel-base-url">站点 Base URL</label><input id="channel-base-url" th:field="*{baseUrl}" type="url" maxlength="2048" placeholder="固定官方 API 可留空"><small>WordPress、Discourse、Mastodon 和 Ghost 必须填写服务器允许的 HTTPS 站点。</small></div>
+                        <div class="channel-form-note" data-channel-form-note hidden><span data-channel-note></span><a data-channel-guide target="_blank" rel="noopener noreferrer">查看申请说明 ↗</a></div>
+                        <div class="form-grid"><div class="field" data-credential-field><label for="credential-one">凭据 1</label><input id="credential-one" th:field="*{credentialOne}" type="password" maxlength="4000" autocomplete="new-password"></div><div class="field" data-credential-field><label for="credential-two">凭据 2</label><input id="credential-two" th:field="*{credentialTwo}" type="password" maxlength="4000" autocomplete="new-password"></div><div class="field" data-credential-field><label for="credential-three">凭据 3</label><input id="credential-three" th:field="*{credentialThree}" type="password" maxlength="4000" autocomplete="new-password"></div><div class="field" data-credential-field><label for="credential-four">凭据 4</label><input id="credential-four" th:field="*{credentialFour}" type="password" maxlength="4000" autocomplete="new-password"></div><div class="field" data-credential-field><label for="credential-five">凭据 5</label><input id="credential-five" th:field="*{credentialFive}" type="password" maxlength="4000" autocomplete="new-password"></div></div>
+                        <div class="form-footer"><small>保存后凭据不可回显；后续通过“轮换凭据”更新。</small><button class="primary-button" type="submit">加密保存账号</button></div>
+                    </form>
+                </details>
+
+                <div class="empty-state" th:if="${#lists.isEmpty(accounts)}">尚未添加可用的 API 发布账号。</div>
+                <div class="table-wrap" th:unless="${#lists.isEmpty(accounts)}"><table class="management-table channel-account-table"><thead><tr><th>账号</th><th>平台</th><th>系统支持</th><th>账号状态</th><th>更新时间</th><th class="table-actions-column">操作</th></tr></thead>
+                    <tbody><tr th:each="account : ${accounts}" th:id="|account-${account.id}|"><td><strong th:text="${account.displayName}">账号</strong><small th:text="${account.baseUrl != null ? account.baseUrl : '固定官方 API'}">url</small></td><td><strong th:text="${channelNames.get(account.type)}">平台</strong><small th:text="|凭据版本 v${account.version}|">v1</small></td>
+                        <td><span class="availability-badge" th:classappend="| tone-${channelDefinitions.get(account.type).availabilityTone()}|" th:text="${channelDefinitions.get(account.type).availabilityLabel()}">可用</span><small th:text="${channelDefinitions.get(account.type).availabilityNote()}">说明</small></td>
+                        <td><span class="status-pill" th:classappend="| status-${account.status.name().toLowerCase()}|" th:text="${channelAccountStatusNames.get(account.status)}">已启用</span><small class="verification-state" th:if="${account.verificationStatus != null}" th:classappend="| verification-${account.verificationStatus.name().toLowerCase()}|" th:text="${account.verificationMessage}">验证结果</small><small class="verification-state" th:if="${account.verificationStatus == null}">尚未验证连接</small></td><td><span th:text="${account.updatedAt}">time</span><small th:if="${account.lastVerifiedAt != null}" th:text="|验证于 ${account.lastVerifiedAt}|">验证时间</small></td>
+                        <td><details class="table-action-menu"><summary>管理</summary><div class="account-action-panel">
+                            <a class="text-link" th:href="${channelDefinitions.get(account.type).applicationGuideUrl()}" target="_blank" rel="noopener noreferrer">申请说明 ↗</a>
+                            <form th:if="${canAdmin and channelDefinitions.get(account.type).existingAccountOperational()}" th:action="@{/channels/{id}/verify(id=${account.id})}" method="post"><button class="primary-button" type="submit">测试连接</button></form>
+                            <form th:if="${canAdmin}" class="stack-form compact-form" th:action="@{/channels/{id}/profile(id=${account.id})}" method="post"><input type="hidden" name="expectedVersion" th:value="${account.version}"><div class="field"><label th:for="|account-name-${account.id}|">显示名称</label><input th:id="|account-name-${account.id}|" name="displayName" maxlength="120" th:value="${account.displayName}" required></div><div class="field"><label th:for="|account-url-${account.id}|">Base URL</label><input th:id="|account-url-${account.id}|" name="baseUrl" type="url" maxlength="2048" th:value="${account.baseUrl}" placeholder="固定官方 API 可留空"></div><button class="secondary-button" type="submit">保存账号信息</button></form>
+                            <form th:if="${canAdmin}" class="stack-form compact-form" th:action="@{/channels/{id}/credentials(id=${account.id})}" method="post" autocomplete="off"><input type="hidden" name="expectedVersion" th:value="${account.version}"><div class="field" th:if="${channelDefinitions.get(account.type).credentialFields().size() > 0}"><label th:for="|rotate-one-${account.id}|" th:text="${channelDefinitions.get(account.type).credentialFields().get(0).label()}">凭据 1</label><input th:id="|rotate-one-${account.id}|" name="credentialOne" type="password" maxlength="4000" autocomplete="new-password" required></div><div class="field" th:if="${channelDefinitions.get(account.type).credentialFields().size() > 1}"><label th:for="|rotate-two-${account.id}|" th:text="${channelDefinitions.get(account.type).credentialFields().get(1).label()}">凭据 2</label><input th:id="|rotate-two-${account.id}|" name="credentialTwo" type="password" maxlength="4000" autocomplete="new-password" required></div><div class="field" th:if="${channelDefinitions.get(account.type).credentialFields().size() > 2}"><label th:for="|rotate-three-${account.id}|" th:text="${channelDefinitions.get(account.type).credentialFields().get(2).label()}">凭据 3</label><input th:id="|rotate-three-${account.id}|" name="credentialThree" type="password" maxlength="4000" autocomplete="new-password" required></div><div class="field" th:if="${channelDefinitions.get(account.type).credentialFields().size() > 3}"><label th:for="|rotate-four-${account.id}|" th:text="${channelDefinitions.get(account.type).credentialFields().get(3).label()}">凭据 4</label><input th:id="|rotate-four-${account.id}|" name="credentialFour" type="password" maxlength="4000" autocomplete="new-password" required></div><div class="field" th:if="${channelDefinitions.get(account.type).credentialFields().size() > 4}"><label th:for="|rotate-five-${account.id}|" th:text="${channelDefinitions.get(account.type).credentialFields().get(4).label()}">凭据 5</label><input th:id="|rotate-five-${account.id}|" name="credentialFive" type="password" maxlength="4000" autocomplete="new-password" required></div><button class="secondary-button" type="submit">轮换凭据</button></form>
+                            <form th:if="${canAdmin}" th:action="@{/channels/{id}/status(id=${account.id})}" method="post" th:attr="data-confirm=${account.status.name() == 'ACTIVE' ? '停用后该账号不会接收新的发布任务，确认继续？' : null}"><input type="hidden" name="expectedVersion" th:value="${account.version}"><input type="hidden" name="status" th:value="${account.status.name() == 'ACTIVE' ? 'DISABLED' : 'ACTIVE'}"><button th:class="${account.status.name() == 'ACTIVE'} ? 'danger-link' : 'primary-button'" type="submit" th:text="${account.status.name() == 'ACTIVE'} ? '停用账号' : '启用账号'">停用账号</button></form>
+                        </div></details></td></tr></tbody></table></div>
+            </section>
+
+            <section class="workspace-panel" th:if="${selectedChannelView == 'manual'}">
+                <header class="workspace-panel-header"><div><h3>人工发布平台</h3><p>发布时打开官方创作页，完成后回填公开链接和内容快照。</p></div><strong th:text="|${manualChannels.size()} 个平台|">0 个平台</strong></header>
+                <div class="table-wrap"><table class="management-table"><thead><tr><th>平台</th><th>区域</th><th>内容格式</th><th>长度限制</th><th>发布方式</th><th>入口</th></tr></thead><tbody><tr th:each="channel : ${manualChannels}"><td><strong th:text="${channel.displayName()}">平台</strong><small th:text="${channel.contentHint()}">说明</small></td><td th:text="${channel.region().name() == 'DOMESTIC' ? '国内' : '海外'}">国内</td><td th:text="${channel.contentFormat()}">MARKDOWN</td><td th:text="|${channel.characterLimit()} 字符|">20000 字符</td><td>人工发布</td><td><a class="text-link" th:href="${channel.editorUrl()}" target="_blank" rel="noopener noreferrer">打开创作页 ↗</a></td></tr></tbody></table></div>
+            </section>
         </main>
-    </div></div></body></html>
+    </div>
+</div>
+</body>
+</html>

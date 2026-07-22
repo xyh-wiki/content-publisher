@@ -1,11 +1,14 @@
 package io.contentpublisher.platform.infrastructure.persistence;
 
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
+import io.contentpublisher.platform.application.PagedResult;
 import io.contentpublisher.platform.application.port.ManualPublicationRepository;
 import io.contentpublisher.platform.application.port.PublicationRepository;
 import io.contentpublisher.platform.domain.ChannelAccount;
 import io.contentpublisher.platform.domain.ManualPublication;
 import io.contentpublisher.platform.domain.Publication;
+import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.PublicationStatus;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +44,8 @@ public class JpaPublishingPersistenceAdapter implements ChannelAccountRepository
         entity.encryptedCredentials = account.encryptedCredentials(); entity.idempotencyKey = account.idempotencyKey();
         entity.requestHash = account.requestHash(); entity.credentialFingerprint = account.credentialFingerprint();
         entity.accountVersion = account.version(); entity.status = account.status();
+        entity.verificationStatus = account.verificationStatus();
+        entity.verificationMessage = account.verificationMessage(); entity.lastVerifiedAt = account.lastVerifiedAt();
         entity.createdBy = account.createdBy(); entity.updatedBy = account.updatedBy();
         entity.createdAt = account.createdAt(); entity.updatedAt = account.updatedAt();
         return mapper.channelAccount(channelAccounts.save(entity));
@@ -49,10 +54,22 @@ public class JpaPublishingPersistenceAdapter implements ChannelAccountRepository
     @Override
     public Optional<ChannelAccount> updateIfVersionMatches(ChannelAccount account, int expectedVersion) {
         int updated = channelAccounts.updateIfVersionMatches(account.tenantId(), account.id(),
-                account.encryptedCredentials(), account.credentialFingerprint(), account.status(), expectedVersion,
+                account.displayName(), account.baseUrl(), account.requestHash(), account.encryptedCredentials(),
+                account.credentialFingerprint(), account.status(), account.verificationStatus(),
+                account.verificationMessage(), account.lastVerifiedAt(), expectedVersion,
                 account.version(), account.updatedBy(), account.updatedAt());
         if (updated == 0) return Optional.empty();
         return channelAccounts.findByTenantIdAndId(account.tenantId(), account.id()).map(mapper::channelAccount);
+    }
+
+    @Override
+    public Optional<ChannelAccount> updateVerification(String tenantId, UUID accountId,
+                                                       io.contentpublisher.platform.domain.ChannelVerificationStatus status,
+                                                       String message, java.time.Instant checkedAt) {
+        if (channelAccounts.updateVerification(tenantId, accountId, status, message, checkedAt) == 0) {
+            return Optional.empty();
+        }
+        return channelAccounts.findByTenantIdAndId(tenantId, accountId).map(mapper::channelAccount);
     }
 
     @Override
@@ -73,6 +90,12 @@ public class JpaPublishingPersistenceAdapter implements ChannelAccountRepository
     public List<ChannelAccount> findAll(String tenantId) {
         return channelAccounts.findAllByTenantIdOrderByCreatedAtDesc(tenantId).stream()
                 .map(mapper::channelAccount).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countAll(String tenantId) {
+        return channelAccounts.countByTenantId(tenantId);
     }
 
     @Override
@@ -124,6 +147,16 @@ public class JpaPublishingPersistenceAdapter implements ChannelAccountRepository
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public PagedResult<Publication> searchApi(String tenantId, String query, ChannelType channelType,
+                                              PublicationStatus status, int page, int pageSize) {
+        var result = publications.search(tenantId, query == null ? "" : query, channelType, status,
+                PageRequest.of(page, pageSize));
+        return new PagedResult<>(result.getContent().stream().map(mapper::publication).toList(), page, pageSize,
+                result.getTotalElements());
+    }
+
+    @Override
     public ManualPublication save(ManualPublication publication) {
         ManualPublicationEntity entity = new ManualPublicationEntity();
         entity.id = publication.id(); entity.tenantId = publication.tenantId();
@@ -153,5 +186,15 @@ public class JpaPublishingPersistenceAdapter implements ChannelAccountRepository
     public List<ManualPublication> findRecent(String tenantId, int limit) {
         return manualPublications.findByTenantIdAndDeletedAtIsNullOrderByPublishedAtDesc(
                 tenantId, PageRequest.of(0, limit)).stream().map(mapper::manualPublication).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PagedResult<ManualPublication> searchManual(String tenantId, String query, ChannelType channelType,
+                                                       int page, int pageSize) {
+        var result = manualPublications.search(tenantId, query == null ? "" : query, channelType,
+                PageRequest.of(page, pageSize));
+        return new PagedResult<>(result.getContent().stream().map(mapper::manualPublication).toList(), page,
+                pageSize, result.getTotalElements());
     }
 }

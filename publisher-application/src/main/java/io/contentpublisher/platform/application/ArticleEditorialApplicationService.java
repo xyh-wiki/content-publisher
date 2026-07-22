@@ -107,6 +107,20 @@ public final class ArticleEditorialApplicationService {
         return saved;
     }
 
+    public Article restoreVersion(ActorContext actor, UUID articleId, int expectedVersion, int sourceVersion) {
+        ArticleVersion version = getArticleVersions(actor, articleId).stream()
+                .filter(item -> item.versionNumber() == sourceVersion)
+                .findFirst()
+                .orElseThrow(() -> new ApplicationException("ARTICLE_VERSION_NOT_FOUND", "文章版本不存在"));
+        Article restored = updateArticle(actor, articleId, expectedVersion, version.title(), version.summary(),
+                version.markdown(), version.tags(), version.keywords(), version.titleEn(), version.summaryEn(),
+                version.markdownEn(), version.tagsEn(), version.keywordsEn());
+        auditRecorder.record(actor, "ARTICLE_VERSION_RESTORED", "ARTICLE", articleId,
+                Map.of("sourceVersion", Integer.toString(sourceVersion),
+                        "newVersion", Integer.toString(restored.currentVersion())));
+        return restored;
+    }
+
     private Article updateArticleStatus(Article article, ArticleStatus status, String subject) {
         return articles.save(new Article(article.id(), article.tenantId(), article.origin(), article.generationJobId(),
                 article.title(), article.summary(), article.markdown(), article.tags(), article.keywords(),

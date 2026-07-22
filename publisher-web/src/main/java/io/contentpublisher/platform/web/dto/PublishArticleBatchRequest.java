@@ -6,8 +6,10 @@ import jakarta.validation.constraints.Size;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 
 public record PublishArticleBatchRequest(
         @NotEmpty @Size(max = 20) List<@NotNull UUID> channelAccountIds,
-        @Size(max = 2048) String canonicalUrl) {
+        @Size(max = 2048) String canonicalUrl,
+        Instant scheduledAt) {
 }

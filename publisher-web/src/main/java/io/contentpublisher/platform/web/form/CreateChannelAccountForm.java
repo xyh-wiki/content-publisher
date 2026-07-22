@@ -26,6 +26,12 @@ public class CreateChannelAccountForm {
     @Size(max = 4000, message = "凭据内容过长")
     private String credentialThree;
 
+    @Size(max = 4000, message = "凭据内容过长")
+    private String credentialFour;
+
+    @Size(max = 4000, message = "凭据内容过长")
+    private String credentialFive;
+
     @NotBlank
     @Pattern(regexp = "[A-Za-z0-9._:-]{8,128}")
     private String idempotencyKey;
@@ -42,6 +48,10 @@ public class CreateChannelAccountForm {
     public void setCredentialTwo(String credentialTwo) { this.credentialTwo = credentialTwo; }
     public String getCredentialThree() { return credentialThree; }
     public void setCredentialThree(String credentialThree) { this.credentialThree = credentialThree; }
+    public String getCredentialFour() { return credentialFour; }
+    public void setCredentialFour(String credentialFour) { this.credentialFour = credentialFour; }
+    public String getCredentialFive() { return credentialFive; }
+    public void setCredentialFive(String credentialFive) { this.credentialFive = credentialFive; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 }

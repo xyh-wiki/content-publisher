@@ -215,7 +215,7 @@ public class PortalMonitoringController {
 
     private Map<JobStatus, String> jobStatusNames() {
         return Map.of(JobStatus.PENDING, "等待", JobStatus.RUNNING, "运行中", JobStatus.RETRY_WAIT, "等待重试",
-                JobStatus.SUCCEEDED, "成功", JobStatus.FAILED, "失败");
+                JobStatus.SUCCEEDED, "成功", JobStatus.FAILED, "失败", JobStatus.CANCELLED, "已取消");
     }
 
     private Map<JobType, String> jobTypeNames() {

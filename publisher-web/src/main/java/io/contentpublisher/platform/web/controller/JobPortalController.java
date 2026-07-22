@@ -3,20 +3,24 @@ package io.contentpublisher.platform.web.controller;
 import io.contentpublisher.platform.application.JobApplicationService;
 import io.contentpublisher.platform.domain.Job;
 import io.contentpublisher.platform.domain.JobStatus;
+import io.contentpublisher.platform.domain.JobType;
 import io.contentpublisher.platform.web.dto.JobProgressView;
 import io.contentpublisher.platform.web.security.RequestActorProvider;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
+import java.util.Locale;
 
 @Controller
 public class JobPortalController {
-    private static final int LIST_LIMIT = 50;
     private static final DateTimeFormatter JOB_TIME_FORMAT = DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'").withZone(ZoneOffset.UTC);
 
@@ -29,8 +33,25 @@ public class JobPortalController {
     }
 
     @GetMapping("/jobs")
-    public String jobQueue(Model model) {
-        model.addAttribute("jobs", jobs.listJobs(actors.currentActor(), LIST_LIMIT));
+    public String jobQueue(@RequestParam(required = false) String q,
+                           @RequestParam(required = false) String type,
+                           @RequestParam(required = false) String status,
+                           @RequestParam(defaultValue = "0") int page,
+                           @RequestParam(defaultValue = "20") int size,
+                           Model model) {
+        var selectedType = parseEnum(JobType.class, type);
+        var selectedStatus = parseEnum(JobStatus.class, status);
+        int selectedPage = Math.max(0, page);
+        int selectedSize = size == 50 ? 50 : 20;
+        var jobPage = jobs.searchJobs(actors.currentActor(), q, selectedType, selectedStatus,
+                selectedPage, selectedSize);
+        model.addAttribute("jobs", jobPage.items());
+        model.addAttribute("jobPage", jobPage);
+        model.addAttribute("searchQuery", q == null ? "" : q.trim());
+        model.addAttribute("selectedType", selectedType);
+        model.addAttribute("selectedStatus", selectedStatus);
+        model.addAttribute("jobTypeOptions", JobType.values());
+        model.addAttribute("jobStatusOptions", JobStatus.values());
         model.addAttribute("jobTypeNames", PortalLabels.jobTypeNames());
         model.addAttribute("jobStatusNames", PortalLabels.jobStatusNames());
         return "jobs";
@@ -51,6 +72,17 @@ public class JobPortalController {
         return "job-detail";
     }
 
+    @PostMapping("/jobs/{jobId}/cancel")
+    public String cancel(@PathVariable UUID jobId, RedirectAttributes redirectAttributes) {
+        try {
+            jobs.cancelJob(actors.currentActor(), jobId);
+            redirectAttributes.addFlashAttribute("success", "任务已取消");
+        } catch (io.contentpublisher.platform.application.ApplicationException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/jobs/" + jobId;
+    }
+
     private String resultLink(Job job) {
         if (job.status() != JobStatus.SUCCEEDED || job.resultResourceId() == null) return null;
         return switch (job.type()) {
@@ -59,5 +91,14 @@ public class JobPortalController {
                     "/articles/" + job.resultResourceId();
             case PUBLISH_ARTICLE -> null;
         };
+    }
+
+    private <E extends Enum<E>> E parseEnum(Class<E> type, String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 }

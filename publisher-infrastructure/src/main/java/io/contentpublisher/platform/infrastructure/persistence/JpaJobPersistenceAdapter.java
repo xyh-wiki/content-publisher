@@ -1,6 +1,8 @@
 package io.contentpublisher.platform.infrastructure.persistence;
 
 import io.contentpublisher.platform.application.DeletedRecord;
+import io.contentpublisher.platform.application.PagedResult;
+import io.contentpublisher.platform.domain.JobType;
 import io.contentpublisher.platform.application.port.JobRepository;
 import io.contentpublisher.platform.domain.Job;
 import io.contentpublisher.platform.domain.JobPayload;
@@ -93,6 +95,16 @@ public class JpaJobPersistenceAdapter implements JobRepository {
 
     @Override
     @Transactional(readOnly = true)
+    public PagedResult<Job> searchJobs(String tenantId, String query, JobType type, JobStatus status,
+                                       int page, int pageSize) {
+        var result = jobs.search(tenantId, query == null ? "" : query, type, status,
+                PageRequest.of(page, pageSize));
+        return new PagedResult<>(result.getContent().stream().map(mapper::job).toList(), page, pageSize,
+                result.getTotalElements());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<Job> findByArticleReference(String tenantId, UUID articleId) {
         return jobs.findAllByTenantIdAndDeletedAtIsNull(tenantId).stream().map(mapper::job)
                 .filter(job -> articleId.equals(job.resultResourceId())
@@ -147,6 +159,12 @@ public class JpaJobPersistenceAdapter implements JobRepository {
         job.deletedAt = null; job.deletedBy = null;
         jobs.save(job);
         return true;
+    }
+
+    @Override
+    public boolean cancelPending(String tenantId, UUID jobId, Instant now) {
+        return jobs.cancelPending(tenantId, jobId, List.of(JobStatus.PENDING, JobStatus.RETRY_WAIT),
+                JobStatus.CANCELLED, "任务已取消", "任务在执行前由用户取消", now) == 1;
     }
 
     @Override

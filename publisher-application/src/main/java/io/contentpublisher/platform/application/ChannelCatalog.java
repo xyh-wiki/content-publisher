@@ -106,8 +106,12 @@ public final class ChannelCatalog {
                     credential("apiUsername", "API Username"));
             case GITHUB_DISCUSSIONS -> List.of(credential("token", "Access Token"),
                     credential("repositoryId", "Repository ID"), credential("categoryId", "Category ID"));
-            case X -> List.of(credential("accessToken", "Access Token"));
-            case REDDIT -> List.of(credential("accessToken", "Access Token"), credential("subreddit", "Subreddit"));
+            case X -> List.of(credential("accessToken", "Access Token"),
+                    credential("refreshToken", "Refresh Token"), credential("clientId", "Client ID"),
+                    credential("clientSecret", "Client Secret"));
+            case REDDIT -> List.of(credential("accessToken", "Access Token"),
+                    credential("refreshToken", "Refresh Token"), credential("clientId", "Client ID"),
+                    credential("clientSecret", "Client Secret"), credential("subreddit", "Subreddit"));
             case HASHNODE -> List.of(credential("token", "Access Token"),
                     credential("publicationId", "Publication ID"));
             case MEDIUM -> List.of(credential("token", "Integration Token"), credential("authorId", "Author ID"));
@@ -126,6 +130,13 @@ public final class ChannelCatalog {
     public enum ChannelRegion {
         DOMESTIC,
         OVERSEAS
+    }
+
+    public enum AutomationAvailability {
+        AVAILABLE,
+        LIMITED,
+        REQUIRES_UPGRADE,
+        RETIRED
     }
 
     public record ChannelDefinition(
@@ -154,6 +165,65 @@ public final class ChannelCatalog {
 
         public String credentialLabelsAttribute() {
             return String.join("|", credentialFields.stream().map(CredentialField::label).toList());
+        }
+
+        public AutomationAvailability automationAvailability() {
+            return switch (type) {
+                case MEDIUM -> AutomationAvailability.RETIRED;
+                default -> apiSupported ? AutomationAvailability.AVAILABLE : AutomationAvailability.RETIRED;
+            };
+        }
+
+        public boolean configurationAllowed() {
+            return automationAvailability() == AutomationAvailability.AVAILABLE
+                    || automationAvailability() == AutomationAvailability.LIMITED;
+        }
+
+        public boolean existingAccountOperational() {
+            return apiSupported && automationAvailability() != AutomationAvailability.REQUIRES_UPGRADE;
+        }
+
+        public String availabilityLabel() {
+            return switch (automationAvailability()) {
+                case AVAILABLE -> "可用";
+                case LIMITED -> "授权受限";
+                case REQUIRES_UPGRADE -> "等待系统升级";
+                case RETIRED -> "停止新接入";
+            };
+        }
+
+        public String availabilityTone() {
+            return switch (automationAvailability()) {
+                case AVAILABLE -> "success";
+                case LIMITED -> "warning";
+                case REQUIRES_UPGRADE -> "danger";
+                case RETIRED -> "muted";
+            };
+        }
+
+        public String availabilityNote() {
+            return switch (type) {
+                case X -> "使用 OAuth 2.0 Refresh Token，在发布前自动刷新并加密保存轮换后的令牌。";
+                case REDDIT -> "需要先获批 Data API；系统会在发布前刷新用户令牌并保存轮换结果。";
+                case MEDIUM -> "Medium 官方已停止支持新的 API 集成。";
+                default -> apiSupported ? "可以配置并用于 API 自动发布。" : "通过官方创作页完成人工发布。";
+            };
+        }
+
+        public String applicationGuideUrl() {
+            return switch (type) {
+                case DEV -> "https://developers.forem.com/api/v1#tag/articles/operation/createArticle";
+                case WORDPRESS -> "https://developer.wordpress.org/rest-api/using-the-rest-api/authentication/#basic-authentication-with-application-passwords";
+                case DISCOURSE -> "https://meta.discourse.org/t/create-and-configure-an-api-key/230124";
+                case GITHUB_DISCUSSIONS -> "https://docs.github.com/en/graphql/guides/using-the-graphql-api-for-discussions";
+                case X -> "https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code";
+                case REDDIT -> "https://support.reddithelp.com/hc/en-us/articles/14945211791892-Developer-Platform-Accessing-Reddit-Data";
+                case HASHNODE -> "https://github.com/Hashnode/gql-skill";
+                case MEDIUM -> "https://github.com/Medium/medium-api-docs";
+                case MASTODON -> "https://docs.joinmastodon.org/client/token/";
+                case GHOST -> "https://docs.ghost.org/admin-api/#token-authentication";
+                default -> editorUrl;
+            };
         }
     }
 

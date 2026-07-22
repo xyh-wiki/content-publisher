@@ -17,6 +17,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -78,15 +79,28 @@ public final class JobApplicationService {
 
     public Job submitPublication(ActorContext actor, UUID articleId, UUID channelAccountId,
                                  String canonicalUrl, String idempotencyKey) {
+        return submitPublication(actor, articleId, channelAccountId, canonicalUrl, idempotencyKey, null);
+    }
+
+    public Job submitPublication(ActorContext actor, UUID articleId, UUID channelAccountId,
+                                 String canonicalUrl, String idempotencyKey, Instant scheduledAt) {
         String normalizedCanonicalUrl = publishing.validateCanonicalUrl(canonicalUrl);
         publishing.assertPublishable(actor, articleId, channelAccountId);
+        Instant now = clock.instant();
+        Instant normalizedSchedule = normalizeSchedule(scheduledAt, now);
         JobPayload.PublishArticle payload = new JobPayload.PublishArticle(articleId, channelAccountId, normalizedCanonicalUrl);
         return submit(actor, JobType.PUBLISH_ARTICLE, payload, idempotencyKey,
-                hash("PUBLISH_ARTICLE", articleId.toString(), channelAccountId.toString(), value(normalizedCanonicalUrl)));
+                hash("PUBLISH_ARTICLE", articleId.toString(), channelAccountId.toString(), value(normalizedCanonicalUrl),
+                        scheduleKey(scheduledAt)), normalizedSchedule);
     }
 
     public List<Job> submitPublications(ActorContext actor, UUID articleId, List<UUID> channelAccountIds,
                                         String canonicalUrl, String idempotencyKey) {
+        return submitPublications(actor, articleId, channelAccountIds, canonicalUrl, idempotencyKey, null);
+    }
+
+    public List<Job> submitPublications(ActorContext actor, UUID articleId, List<UUID> channelAccountIds,
+                                        String canonicalUrl, String idempotencyKey, Instant scheduledAt) {
         validateIdempotencyKey(idempotencyKey);
         List<UUID> accountIds = normalizeAccountIds(channelAccountIds);
         String normalizedCanonicalUrl = publishing.validateCanonicalUrl(canonicalUrl);
@@ -95,11 +109,12 @@ public final class JobApplicationService {
         LinkedHashMap<String, Job> resolved = new LinkedHashMap<>();
         List<Job> candidates = new java.util.ArrayList<>();
         Instant now = clock.instant();
+        Instant normalizedSchedule = normalizeSchedule(scheduledAt, now);
         UUID batchId = publicationBatchId(actor.tenantId(), idempotencyKey);
         for (UUID accountId : accountIds) {
             String childKey = batchChildKey(idempotencyKey, accountId);
             String requestHash = hash("PUBLISH_ARTICLE", articleId.toString(), accountId.toString(),
-                    value(normalizedCanonicalUrl));
+                    value(normalizedCanonicalUrl), scheduleKey(scheduledAt));
             Job existing = existingJob(actor.tenantId(), JobType.PUBLISH_ARTICLE, childKey, requestHash);
             if (existing != null) {
                 resolved.put(childKey, existing);
@@ -107,7 +122,8 @@ public final class JobApplicationService {
             }
             JobPayload.PublishArticle payload = new JobPayload.PublishArticle(articleId, accountId,
                     normalizedCanonicalUrl);
-            candidates.add(pendingJob(actor, JobType.PUBLISH_ARTICLE, payload, childKey, requestHash, batchId, now));
+            candidates.add(pendingJob(actor, JobType.PUBLISH_ARTICLE, payload, childKey, requestHash, batchId,
+                    normalizedSchedule, now));
         }
 
         List<Job> created = jobs.createBatchIfWithinQuota(candidates, maxActiveJobsPerTenant)
@@ -155,12 +171,42 @@ public final class JobApplicationService {
         return jobs.findRecentJobs(actor.tenantId(), limit);
     }
 
-    private Job submit(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey, String requestHash) {
+    public PagedResult<Job> searchJobs(ActorContext actor, String query, JobType type, JobStatus status,
+                                       int page, int pageSize) {
+        if (page < 0 || page > 100_000 || pageSize < 1 || pageSize > 100) {
+            throw new IllegalArgumentException("分页参数无效");
+        }
+        String normalizedQuery = query == null || query.isBlank() ? "" : query.trim();
+        if (normalizedQuery.length() > 120) normalizedQuery = normalizedQuery.substring(0, 120);
+        return jobs.searchJobs(actor.tenantId(), normalizedQuery, type, status, page, pageSize);
+    }
+
+    public Job cancelJob(ActorContext actor, UUID jobId) {
+        Job job = getJob(actor, jobId);
+        if (job.status() != JobStatus.PENDING && job.status() != JobStatus.RETRY_WAIT) {
+            throw new ApplicationException("JOB_NOT_CANCELLABLE", "只有尚未执行或等待重试的任务可以取消");
+        }
+        if (!jobs.cancelPending(actor.tenantId(), jobId, clock.instant())) {
+            throw new ApplicationException("JOB_NOT_CANCELLABLE", "任务已被工作器领取或状态已变化，请刷新后重试");
+        }
+        Job cancelled = getJob(actor, jobId);
+        auditRecorder.record(actor, "JOB_CANCELLED", "JOB", jobId,
+                Map.of("jobType", cancelled.type().name()));
+        return cancelled;
+    }
+
+    private Job submit(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey,
+                       String requestHash) {
+        return submit(actor, type, payload, idempotencyKey, requestHash, clock.instant());
+    }
+
+    private Job submit(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey,
+                       String requestHash, Instant scheduledAt) {
         validateIdempotencyKey(idempotencyKey);
         Job existing = existingJob(actor.tenantId(), type, idempotencyKey, requestHash);
         if (existing != null) return existing;
         Instant now = clock.instant();
-        Job candidate = pendingJob(actor, type, payload, idempotencyKey, requestHash, null, now);
+        Job candidate = pendingJob(actor, type, payload, idempotencyKey, requestHash, null, scheduledAt, now);
         Job saved = jobs.createIfWithinQuota(candidate, maxActiveJobsPerTenant)
                 .orElseThrow(() -> new ApplicationException("TENANT_JOB_QUOTA_EXCEEDED", "租户活跃任务数量已达到上限"));
         auditRecorder.record(actor, "JOB_SUBMITTED", "JOB", saved.id(),
@@ -194,10 +240,33 @@ public final class JobApplicationService {
 
     private Job pendingJob(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey,
                            String requestHash, UUID batchId, Instant now) {
+        return pendingJob(actor, type, payload, idempotencyKey, requestHash, batchId, now, now);
+    }
+
+    private Job pendingJob(ActorContext actor, JobType type, JobPayload payload, String idempotencyKey,
+                           String requestHash, UUID batchId, Instant scheduledAt, Instant now) {
+        boolean delayed = scheduledAt.isAfter(now.plusSeconds(1));
         return new Job(UUID.randomUUID(), actor.tenantId(), actor.subject(), type, JobStatus.PENDING,
-                payload, idempotencyKey, requestHash, 0, maxAttempts, 5, "等待执行",
-                "任务已进入队列，等待后台工作器领取", batchId, now, null, null, null,
+                payload, idempotencyKey, requestHash, 0, maxAttempts, 5,
+                delayed ? "等待定时执行" : "等待执行",
+                delayed ? "任务将在计划时间到达后进入执行队列" : "任务已进入队列，等待后台工作器领取",
+                batchId, scheduledAt, null, null, null,
                 null, null, now, now);
+    }
+
+    private Instant normalizeSchedule(Instant requested, Instant now) {
+        if (requested == null) return now;
+        if (requested.isBefore(now.minusSeconds(60))) {
+            throw new ApplicationException("SCHEDULED_AT_INVALID", "计划发布时间不能早于当前时间");
+        }
+        if (requested.isAfter(now.plus(Duration.ofDays(365)))) {
+            throw new ApplicationException("SCHEDULED_AT_INVALID", "计划发布时间不能超过一年");
+        }
+        return requested.isBefore(now) ? now : requested;
+    }
+
+    private String scheduleKey(Instant requested) {
+        return requested == null ? "" : requested.toString();
     }
 
     private void validateIdempotencyKey(String key) {

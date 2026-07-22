@@ -4,6 +4,7 @@ import io.contentpublisher.platform.application.ApplicationException;
 import io.contentpublisher.platform.application.ProjectApplicationService;
 import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.domain.Article;
+import io.contentpublisher.platform.domain.ArticleSourceType;
 import io.contentpublisher.platform.domain.ArticleStatus;
 import io.contentpublisher.platform.web.dto.ArticleSeoView;
 import io.contentpublisher.platform.web.form.RejectArticleForm;
@@ -17,17 +18,17 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.UUID;
+import java.util.Locale;
 
 import static io.contentpublisher.platform.web.controller.PortalFormSupport.firstError;
 import static io.contentpublisher.platform.web.controller.PortalFormSupport.splitValues;
 
 @Controller
 public class ContentLibraryPortalController {
-    private static final int LIST_LIMIT = 50;
-
     private final ProjectApplicationService projects;
     private final PublishingApplicationService publishing;
     private final RequestActorProvider actors;
@@ -41,23 +42,69 @@ public class ContentLibraryPortalController {
     }
 
     @GetMapping("/content")
-    public String content(Model model) {
-        model.addAttribute("articles", projects.listArticles(actors.currentActor(), LIST_LIMIT));
+    public String content(@RequestParam(required = false) String q,
+                          @RequestParam(required = false) String status,
+                          @RequestParam(required = false) String source,
+                          @RequestParam(required = false) String language,
+                          @RequestParam(defaultValue = "0") int page,
+                          @RequestParam(defaultValue = "20") int size,
+                          Model model) {
+        var selectedStatus = parseEnum(ArticleStatus.class, status);
+        var selectedSource = parseEnum(ArticleSourceType.class, source);
+        int selectedPage = Math.max(0, page);
+        int selectedSize = size == 50 ? 50 : 20;
+        var articlePage = projects.searchArticles(actors.currentActor(), q, selectedStatus, selectedSource,
+                language, selectedPage, selectedSize);
+        model.addAttribute("articles", articlePage.items());
+        model.addAttribute("articlePage", articlePage);
+        model.addAttribute("searchQuery", q == null ? "" : q.trim());
+        model.addAttribute("selectedStatus", selectedStatus);
+        model.addAttribute("selectedSource", selectedSource);
+        model.addAttribute("selectedLanguage", language == null ? "" : language.trim());
+        model.addAttribute("statusOptions", ArticleStatus.values());
+        model.addAttribute("sourceOptions", ArticleSourceType.values());
+        model.addAttribute("articleStatusNames", PortalLabels.articleStatusNames());
+        model.addAttribute("articleSourceNames", PortalLabels.articleSourceNames());
         return "content-records";
     }
 
     @GetMapping("/articles/{articleId}")
-    public String article(@PathVariable UUID articleId, Model model) {
+    public String article(@PathVariable UUID articleId,
+                          @RequestParam(required = false) Integer fromVersion,
+                          @RequestParam(required = false) Integer toVersion,
+                          Model model) {
         var actor = actors.currentActor();
         Article article = publishing.getArticle(actor, articleId);
         model.addAttribute("article", article);
         model.addAttribute("seo", ArticleSeoView.from(article));
-        model.addAttribute("versions", publishing.getArticleVersions(actor, articleId));
+        var versions = publishing.getArticleVersions(actor, articleId);
+        model.addAttribute("versions", versions);
+        if (fromVersion != null) {
+            model.addAttribute("comparisonFrom", versions.stream()
+                    .filter(version -> version.versionNumber() == fromVersion).findFirst().orElse(null));
+            int targetVersion = toVersion == null ? article.currentVersion() : toVersion;
+            model.addAttribute("comparisonTo", versions.stream()
+                    .filter(version -> version.versionNumber() == targetVersion).findFirst().orElse(null));
+        }
         model.addAttribute("updateArticleForm", articleForm(article));
         model.addAttribute("rejectArticleForm", new RejectArticleForm());
         model.addAttribute("editable", article.status() == ArticleStatus.DRAFT
                 || article.status() == ArticleStatus.REJECTED);
+        model.addAttribute("articleStatusNames", PortalLabels.articleStatusNames());
         return "article-detail";
+    }
+
+    @PostMapping("/articles/{articleId}/versions/{sourceVersion}/restore")
+    public String restoreVersion(@PathVariable UUID articleId, @PathVariable int sourceVersion,
+                                 @RequestParam int expectedVersion,
+                                 RedirectAttributes redirectAttributes) {
+        try {
+            publishing.restoreArticleVersion(actors.currentActor(), articleId, expectedVersion, sourceVersion);
+            redirectAttributes.addFlashAttribute("success", "历史版本已恢复为新的当前版本");
+        } catch (ApplicationException | IllegalArgumentException exception) {
+            redirectAttributes.addFlashAttribute("error", exception.getMessage());
+        }
+        return "redirect:/articles/" + articleId;
     }
 
     @PostMapping("/articles/{articleId}/edit")
@@ -122,5 +169,14 @@ public class ContentLibraryPortalController {
         form.setTagsEn(String.join("\n", article.tagsEn()));
         form.setKeywordsEn(String.join("\n", article.keywordsEn()));
         return form;
+    }
+
+    private <E extends Enum<E>> E parseEnum(Class<E> type, String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 }

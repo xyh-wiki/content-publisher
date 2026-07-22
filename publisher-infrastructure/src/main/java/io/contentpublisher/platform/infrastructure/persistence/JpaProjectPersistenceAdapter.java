@@ -59,6 +59,12 @@ public class JpaProjectPersistenceAdapter implements ProjectRepository, Reposito
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public long countProjects(String tenantId) {
+        return projects.countByTenantId(tenantId);
+    }
+
+    @Override
     public void save(String tenantId, UUID projectId, RepositorySnapshot snapshot) {
         SnapshotEntity entity = new SnapshotEntity();
         entity.projectId = projectId; entity.tenantId = tenantId; entity.name = snapshot.name();

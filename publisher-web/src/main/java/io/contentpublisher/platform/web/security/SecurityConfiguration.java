@@ -116,7 +116,7 @@ public class SecurityConfiguration {
             AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry authorize) {
         authorize.requestMatchers("/settings/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.GET, "/recycle-bin").hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/channels").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/channels", "/channels/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/delete", "/jobs/*/delete").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/restore", "/jobs/*/restore").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.DELETE, "/api/v1/articles/*", "/api/v1/jobs/*").hasRole("ADMIN")
@@ -126,13 +126,13 @@ public class SecurityConfiguration {
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/publications",
                         "/articles/*/publication-batches", "/articles/*/manual/**",
-                        "/jobs/*/publication-retry")
+                        "/jobs/*/publication-retry", "/jobs/*/cancel")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/articles/*/manual/**")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/*/approve", "/articles/*/reject")
                     .hasRole("ADMIN")
-                .requestMatchers(HttpMethod.POST, "/projects/**", "/articles/*/edit")
+                .requestMatchers(HttpMethod.POST, "/projects/**", "/articles/*/edit", "/articles/*/versions/**")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/articles/topic-generations")
                     .hasAnyRole("EDITOR", "ADMIN")
@@ -151,13 +151,15 @@ public class SecurityConfiguration {
                     .hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/channel-accounts/**").hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/articles/*/publications",
-                        "/api/v1/articles/*/publication-batches", "/api/v1/jobs/*/publication-retry")
+                        "/api/v1/articles/*/publication-batches", "/api/v1/jobs/*/publication-retry",
+                        "/api/v1/jobs/*/cancel")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/articles/topic-generations")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/articles/website-generations")
                     .hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.PUT, "/api/v1/articles/*").hasAnyRole("EDITOR", "ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/markdown/preview").hasAnyRole("EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/projects/**").hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.GET, "/api/v1/jobs/**").hasAnyRole("VIEWER", "EDITOR", "ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/v1/projects/**").hasAnyRole("EDITOR", "ADMIN")

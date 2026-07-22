@@ -55,4 +55,9 @@ public class JobController {
         return ResponseEntity.accepted().header(HttpHeaders.LOCATION, "/api/v1/jobs/" + retried.id())
                 .body(JobResponse.from(retried));
     }
+
+    @PostMapping("/{jobId}/cancel")
+    public JobResponse cancel(@PathVariable UUID jobId) {
+        return JobResponse.from(jobs.cancelJob(actors.currentActor(), jobId));
+    }
 }

@@ -1,59 +1,87 @@
 <!doctype html>
-<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex,nofollow"><title>发布中心 · Content Publisher</title><link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
-    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
-<body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('publishing')}"></aside>
-    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('发布中心', '统一管理 API 与人工发布结果')}"></header>
-        <main class="page-content"><section class="page-header"><div><p class="section-kicker">发布管理</p><h2>多平台发布中心</h2>
-            <p>以文章和渠道为维度核对发布覆盖率，并在同一时间线查看 API 任务与人工发布记录。</p></div><div class="header-actions"><a class="secondary-link" th:href="@{/channels}">管理渠道</a><a class="primary-link" th:href="@{/projects}">创建内容</a></div></section>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><title>发布中心 · Content Publisher</title>
+    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script>
+</head>
+<body class="app-page">
+<div class="app-layout">
+    <aside th:replace="~{fragments/app-shell :: sidebar('publishing')}"></aside>
+    <div class="app-main">
+        <header th:replace="~{fragments/app-shell :: topbar('发布中心', '处理待发布内容、执行批次和发布结果')}"></header>
+        <main class="page-content">
+            <section class="page-header compact-page-header">
+                <div><h2>多平台发布中心</h2><p>按任务阶段处理内容，渠道账号与人工平台统一在渠道管理中维护。</p></div>
+                <div class="header-actions"><a class="secondary-link" th:href="@{/channels}">渠道管理</a><a class="primary-link" th:href="@{/projects}">创建内容</a></div>
+            </section>
 
-            <div class="metric-grid"><article class="metric-card"><span>最近发布记录</span><strong th:text="${publicationRecords.size()}">0</strong><small>API 与人工发布统一统计</small></article>
-                <article class="metric-card"><span>成功发布</span><strong th:text="${publishedCount}">0</strong><small>已取得平台发布结果</small></article>
-                <article class="metric-card"><span>执行中批次</span><strong th:text="${activeBatchCount}">0</strong><small>后台正在处理的平台发布批次</small></article>
-                <article class="metric-card"><span>异常批次</span><strong th:text="${failedBatchCount}">0</strong><small>可以按失败平台单独重试</small></article></div>
+            <nav class="workspace-tabs" aria-label="发布中心视图">
+                <a th:href="@{/publishing(tab='queue')}" th:classappend="${selectedTab == 'queue'} ? ' active'" th:attr="aria-current=${selectedTab == 'queue' ? 'page' : null}">待发布 <span th:text="${articles.size()}">0</span></a>
+                <a th:href="@{/publishing(tab='batches')}" th:classappend="${selectedTab == 'batches'} ? ' active'" th:attr="aria-current=${selectedTab == 'batches' ? 'page' : null}">执行批次 <span th:text="${publicationBatches.size()}">0</span></a>
+                <a th:href="@{/publishing(tab='records')}" th:classappend="${selectedTab == 'records'} ? ' active'" th:attr="aria-current=${selectedTab == 'records' ? 'page' : null}">发布记录 <span th:text="${totalRecordCount}">0</span></a>
+                <a class="workspace-tab-secondary" th:href="@{/publishing(tab='coverage')}" th:classappend="${selectedTab == 'coverage'} ? ' active'" th:attr="aria-current=${selectedTab == 'coverage' ? 'page' : null}">覆盖分析</a>
+            </nav>
 
-            <section class="card publication-batches"><div class="card-header"><div><p class="section-kicker">批次执行</p><h3>发布批次看板</h3><p>按一次多平台提交聚合真实任务进度；重试只影响失败账号，不会重复发布成功平台。</p></div><span class="count-badge" th:text="${publicationBatches.size()}">0</span></div>
-                <div class="empty-state" th:if="${#lists.isEmpty(publicationBatches)}">尚无多平台发布批次。</div>
-                <div class="publication-batch-list" th:unless="${#lists.isEmpty(publicationBatches)}"><article class="publication-batch" th:each="batch : ${publicationBatches}" th:id="|batch-${batch.batchId}|">
-                    <header><div><a class="table-title" th:href="@{/publishing/articles/{id}(id=${batch.articleId})}" th:text="${batch.articleTitle}">文章</a><small th:text="|${batch.totalCount} 个平台 · 更新于 ${batch.updatedAt}|">批次信息</small></div>
-                        <div class="batch-summary"><strong th:text="|${batch.progressPercent}%|">0%</strong><span class="status-pill" th:classappend="| status-${batch.status.toLowerCase()}|" th:text="${batch.statusLabel}">发布中</span></div></header>
+            <div class="publishing-summary" aria-label="发布运行摘要">
+                <span>执行中 <strong th:text="${activeBatchCount}">0</strong></span>
+                <span>异常批次 <strong th:text="${failedBatchCount}">0</strong></span>
+                <span>最近成功 <strong th:text="${publishedCount}">0</strong></span>
+            </div>
+
+            <form class="filter-toolbar" method="get" th:action="@{/publishing}">
+                <input type="hidden" name="tab" th:value="${selectedTab}">
+                <div class="filter-search"><label for="publishing-search">搜索</label><input id="publishing-search" name="q" maxlength="120" th:value="${searchQuery}" placeholder="文章、渠道、账号或失败原因"></div>
+                <div class="filter-field" th:if="${selectedTab == 'records'}"><label for="publishing-channel">渠道</label><select id="publishing-channel" name="channel"><option value="">全部渠道</option><option th:each="option : ${channelOptions}" th:value="${option.type()}" th:text="${option.displayName()}" th:selected="${selectedChannel == option.type()}"></option></select></div>
+                <div class="filter-field" th:if="${selectedTab == 'records'}"><label for="publishing-status">状态</label><select id="publishing-status" name="status"><option value="">全部状态</option><option th:each="option : ${statusOptions}" th:value="${option}" th:text="${publicationStatusNames.get(option)}" th:selected="${selectedStatus == option}"></option></select></div>
+                <div class="filter-field" th:if="${selectedTab == 'records'}"><label for="publishing-method">方式</label><select id="publishing-method" name="method"><option value="">全部方式</option><option th:each="option : ${methodOptions}" th:value="${option}" th:text="${publicationMethodNames.get(option)}" th:selected="${selectedMethod == option}"></option></select></div>
+                <div class="filter-field"><label for="publishing-size">每页</label><select id="publishing-size" name="size"><option value="20" th:selected="${publicationRecordPage.pageSize == 20}">20</option><option value="50" th:selected="${publicationRecordPage.pageSize == 50}">50</option></select></div>
+                <div class="filter-actions"><button class="primary-button" type="submit">筛选</button><a class="secondary-link" th:href="@{/publishing(tab=${selectedTab})}">重置</a></div>
+            </form>
+
+            <section class="workspace-panel" th:if="${selectedTab == 'queue'}">
+                <header class="workspace-panel-header"><div><h3>待发布内容</h3><p>已审核内容可以选择渠道；草稿和驳回内容返回内容库处理。</p></div><strong th:text="|${articlePage.totalItems} 条|">0 条</strong></header>
+                <div class="empty-state" th:if="${#lists.isEmpty(articlePage.items)}">没有符合条件的内容。</div>
+                <div class="table-wrap" th:unless="${#lists.isEmpty(articlePage.items)}"><table class="management-table"><thead><tr><th>内容</th><th>阶段</th><th>语言</th><th>版本</th><th>更新时间</th><th class="table-actions-column">操作</th></tr></thead>
+                    <tbody><tr th:each="article : ${articlePage.items}"><td><a class="table-title" th:href="@{/articles/{id}(id=${article.id})}" th:text="${article.title}">标题</a><small class="line-clamp-1" th:text="${article.summary}">摘要</small></td>
+                        <td><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${articleStatusNames.get(article.status)}">草稿</span></td><td th:text="${article.language}">zh-CN</td><td th:text="|v${article.currentVersion}|">v1</td><td th:text="${article.updatedAt}">time</td>
+                        <td><div class="row-actions"><a class="primary-row-action" th:if="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'}" th:href="@{/publishing/articles/{id}(id=${article.id})}">选择渠道</a><a class="text-link" th:unless="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'}" th:href="@{/articles/{id}(id=${article.id})}">编辑审核</a></div></td></tr></tbody></table></div>
+                <nav class="pagination" th:if="${articlePage.totalPages > 1}" aria-label="待发布内容分页"><a th:if="${articlePage.hasPrevious()}" th:href="@{/publishing(tab='queue',q=${searchQuery},size=${articlePage.pageSize},page=${articlePage.previousPage()})}">上一页</a><span th:text="|第 ${articlePage.page + 1} / ${articlePage.totalPages} 页|">第 1 页</span><a th:if="${articlePage.hasNext()}" th:href="@{/publishing(tab='queue',q=${searchQuery},size=${articlePage.pageSize},page=${articlePage.nextPage()})}">下一页</a></nav>
+            </section>
+
+            <section class="workspace-panel" th:if="${selectedTab == 'batches'}" data-publication-batches
+                     th:attr="data-batches-active=${activeBatchCount > 0}">
+                <header class="workspace-panel-header"><div><h3>执行批次</h3><p>同一次多渠道提交聚合展示；失败渠道可以单独重试。</p></div><div class="batch-live-summary"><span data-batch-refresh-state aria-live="polite" th:text="${activeBatchCount > 0} ? '每 5 秒自动同步' : '状态已同步'">状态已同步</span><strong th:text="|${publicationBatchPage.totalItems} 个|">0 个</strong></div></header>
+                <div class="empty-state" th:if="${#lists.isEmpty(publicationBatchPage.items)}">没有符合条件的发布批次。</div>
+                <div class="publication-batch-list" th:unless="${#lists.isEmpty(publicationBatchPage.items)}"><article class="publication-batch" th:each="batch : ${publicationBatchPage.items}" th:id="|batch-${batch.batchId}|">
+                    <header><div><a class="table-title" th:href="@{/publishing/articles/{id}(id=${batch.articleId})}" th:text="${batch.articleTitle}">文章</a><small th:text="|${batch.totalCount} 个渠道 · 更新于 ${batch.updatedAt}|">批次信息</small></div><div class="batch-summary"><strong th:text="|${batch.progressPercent}%|">0%</strong><span class="status-pill" th:classappend="| status-${batch.status.toLowerCase()}|" th:text="${batch.statusLabel}">发布中</span></div></header>
                     <div class="job-progress-track compact" role="progressbar" aria-label="批次发布进度" aria-valuemin="0" aria-valuemax="100" th:attr="aria-valuenow=${batch.progressPercent}"><span th:style="|width:${batch.progressPercent}%|"></span></div>
-                    <div class="batch-counts"><span>处理中 <strong th:text="${batch.activeCount}">0</strong></span><span>成功 <strong th:text="${batch.succeededCount}">0</strong></span><span>失败 <strong th:text="${batch.failedCount}">0</strong></span></div>
-                    <div class="batch-items"><div class="batch-item" th:each="item : ${batch.items}"><div><i th:class="|batch-dot status-${item.status.name().toLowerCase()}|"></i><span><strong th:text="${item.accountName}">账号</strong><small th:text="|${item.channelName} · ${item.progressLabel}|">平台与阶段</small></span></div>
-                        <div class="batch-item-actions"><span class="status-pill" th:classappend="| status-${item.status.name().toLowerCase()}|" th:text="${item.status}">RUNNING</span><a class="text-link" th:href="@{/jobs/{id}(id=${item.jobId})}">详情</a>
-                            <form th:if="${canEdit and item.retryable}" th:action="@{/jobs/{id}/publication-retry(id=${item.jobId})}" method="post"><input type="hidden" name="idempotencyKey" th:value="${item.retryIdempotencyKey}"><button class="mini-button" type="submit">重试</button></form></div>
-                        <p class="record-error" th:if="${item.errorMessage != null}" th:text="${item.errorMessage}">失败原因</p></div></div>
-                </article></div></section>
+                    <div class="batch-counts"><span>处理中 <strong th:text="${batch.activeCount}">0</strong></span><span>成功 <strong th:text="${batch.succeededCount}">0</strong></span><span>失败 <strong th:text="${batch.failedCount}">0</strong></span><span>取消 <strong th:text="${batch.cancelledCount}">0</strong></span></div>
+                    <div class="batch-items"><div class="batch-item" th:each="item : ${batch.items}"><div><i th:class="|batch-dot status-${item.status.name().toLowerCase()}|"></i><span><strong th:text="${item.accountName}">账号</strong><small th:text="|${item.channelName} · ${item.progressLabel}|">平台与阶段</small></span></div><div class="batch-item-actions"><span class="status-pill" th:classappend="| status-${item.status.name().toLowerCase()}|" th:text="${jobStatusNames.get(item.status)}">执行中</span><a class="text-link" th:href="@{/jobs/{id}(id=${item.jobId})}">详情</a><form th:if="${canEdit and item.cancellable}" th:action="@{/jobs/{id}/cancel(id=${item.jobId})}" method="post" data-confirm="取消该渠道的待执行发布任务？"><button class="danger-link mini-button" type="submit">取消</button></form><form th:if="${canEdit and item.retryable}" th:action="@{/jobs/{id}/publication-retry(id=${item.jobId})}" method="post"><input type="hidden" name="idempotencyKey" th:value="${item.retryIdempotencyKey}"><button class="mini-button" type="submit">重试</button></form></div><p class="record-error" th:if="${item.errorMessage != null}" th:text="${item.errorMessage}">失败原因</p></div></div>
+                </article></div>
+                <nav class="pagination" th:if="${publicationBatchPage.totalPages > 1}" aria-label="发布批次分页"><a th:if="${publicationBatchPage.hasPrevious()}" th:href="@{/publishing(tab='batches',q=${searchQuery},size=${publicationBatchPage.pageSize},page=${publicationBatchPage.previousPage()})}">上一页</a><span th:text="|第 ${publicationBatchPage.page + 1} / ${publicationBatchPage.totalPages} 页|">第 1 页</span><a th:if="${publicationBatchPage.hasNext()}" th:href="@{/publishing(tab='batches',q=${searchQuery},size=${publicationBatchPage.pageSize},page=${publicationBatchPage.nextPage()})}">下一页</a></nav>
+            </section>
 
-            <section class="card"><div class="card-header"><div><p class="section-kicker">渠道覆盖</p><h3>文章 / 渠道发布矩阵</h3><p>每个单元格显示该文章在目标渠道的最新发布状态；横向滚动可查看全部平台。</p></div><span class="card-badge" th:text="|${publicationMatrix.size()} 篇内容|">0 篇内容</span></div>
-                <div class="empty-state" th:if="${#lists.isEmpty(publicationMatrix)}">暂无文章，请先从项目生成内容。</div>
-                <div class="table-wrap publication-matrix" th:unless="${#lists.isEmpty(publicationMatrix)}"><table><thead><tr><th class="matrix-article-column">文章</th><th th:each="cell : ${publicationMatrix.get(0).cells}" th:text="${cell.channel.displayName}">渠道</th></tr></thead>
-                    <tbody><tr th:each="row : ${publicationMatrix}"><td class="matrix-article-column"><a class="table-title" th:href="@{/publishing/articles/{id}(id=${row.article.id})}" th:text="${row.article.title}">文章</a><small th:text="${row.article.status}">状态</small></td>
-                        <td class="matrix-status-cell" th:each="cell : ${row.cells}"><span class="matrix-empty" th:if="${cell.latest == null}">未发布</span>
-                            <div th:if="${cell.latest != null}"><a th:if="${cell.latest.externalUrl != null}" th:href="${cell.latest.externalUrl}" target="_blank" rel="noopener noreferrer" class="matrix-result-link" title="打开发布结果">
-                                <span class="status-pill" th:classappend="| status-${cell.latest.status.name().toLowerCase()}|" th:text="${cell.latest.status}">PUBLISHED</span></a>
-                                <span th:unless="${cell.latest.externalUrl != null}" class="status-pill" th:classappend="| status-${cell.latest.status.name().toLowerCase()}|" th:text="${cell.latest.status}">FAILED</span>
-                                <small th:text="|${cell.latest.method} · ${cell.latest.updatedAt}|">API</small></div></td></tr></tbody></table></div></section>
+            <section class="workspace-panel" th:if="${selectedTab == 'records'}">
+                <header class="workspace-panel-header"><div><h3>发布记录</h3><p>只展示真实发布结果；渠道配置请前往渠道管理。</p></div><strong th:text="|${publicationRecordPage.totalItems} 条|">0 条</strong></header>
+                <div class="empty-state" th:if="${#lists.isEmpty(publicationRecordPage.items)}">没有符合条件的发布记录。</div>
+                <div class="table-wrap responsive-record-table" th:unless="${#lists.isEmpty(publicationRecordPage.items)}"><table class="management-table"><thead><tr><th>文章</th><th>渠道</th><th>方式</th><th>状态</th><th>账号 / 操作人</th><th>更新时间</th><th>结果</th></tr></thead>
+                    <tbody><tr th:each="record : ${publicationRecordPage.items}"><td data-label="文章"><a class="table-title" th:href="@{/publishing/articles/{id}(id=${record.articleId})}" th:text="${record.articleTitle}">文章</a></td>
+                        <td data-label="渠道"><strong th:text="${channelNames.get(record.channelType)}">渠道</strong><small th:text="${record.contentFormat}">MARKDOWN</small></td><td data-label="方式"><span class="method-badge" th:classappend="| method-${record.method.name().toLowerCase()}|" th:text="${publicationMethodNames.get(record.method)}">API 自动发布</span></td>
+                        <td data-label="状态"><span class="status-pill" th:classappend="| status-${record.status.name().toLowerCase()}|" th:text="${publicationStatusNames.get(record.status)}">已发布</span><small th:if="${record.errorCode != null}" th:text="${record.errorCode}">ERROR</small></td>
+                        <td data-label="账号" th:text="${record.channelAccountName != null ? record.channelAccountName : (record.publishedBy != null ? record.publishedBy : '-')}">账号</td><td data-label="更新时间" th:text="${record.updatedAt}">time</td>
+                        <td data-label="结果"><a class="text-link" th:if="${record.externalUrl != null}" th:href="${record.externalUrl}" target="_blank" rel="noopener noreferrer">打开结果 ↗</a><span class="record-error" th:if="${record.externalUrl == null and record.errorMessage != null}" th:text="${record.errorMessage}">失败信息</span><span th:if="${record.externalUrl == null and record.errorMessage == null}">—</span></td></tr></tbody></table></div>
+                <nav class="pagination" th:if="${publicationRecordPage.totalPages > 1}" aria-label="发布记录分页"><a th:if="${publicationRecordPage.hasPrevious()}" th:href="@{/publishing(tab='records',q=${searchQuery},channel=${selectedChannel},status=${selectedStatus},method=${selectedMethod},size=${publicationRecordPage.pageSize},page=${publicationRecordPage.previousPage()})}">上一页</a><span th:text="|第 ${publicationRecordPage.page + 1} / ${publicationRecordPage.totalPages} 页|">第 1 页</span><a th:if="${publicationRecordPage.hasNext()}" th:href="@{/publishing(tab='records',q=${searchQuery},channel=${selectedChannel},status=${selectedStatus},method=${selectedMethod},size=${publicationRecordPage.pageSize},page=${publicationRecordPage.nextPage()})}">下一页</a></nav>
+            </section>
 
-            <section class="card"><div class="card-header"><div><p class="section-kicker">发布记录</p><h3>统一发布记录</h3><p>API 发布状态、失败原因与人工发布外链按最新更新时间合并展示。</p></div><span class="count-badge" th:text="${publicationRecords.size()}">0</span></div>
-                <div class="empty-state" th:if="${#lists.isEmpty(publicationRecords)}">尚无发布记录。</div><div class="table-wrap" th:unless="${#lists.isEmpty(publicationRecords)}"><table><thead><tr><th>文章</th><th>渠道</th><th>方式</th><th>状态</th><th>账号 / 操作人</th><th>更新时间</th><th>结果</th></tr></thead>
-                    <tbody><tr th:each="record : ${publicationRecords}"><td><a class="table-title" th:href="@{/publishing/articles/{id}(id=${record.articleId})}" th:text="${articleNames.get(record.articleId) != null ? articleNames.get(record.articleId) : record.articleId}">文章</a><small class="mono" th:text="${record.id}">id</small></td>
-                        <td><strong th:text="${channelNames.get(record.channelType)}">渠道</strong><small th:text="${record.contentFormat}">MARKDOWN</small></td><td><span class="method-badge" th:classappend="| method-${record.method.name().toLowerCase()}|" th:text="${record.method}">API</span></td>
-                        <td><span class="status-pill" th:classappend="| status-${record.status.name().toLowerCase()}|" th:text="${record.status}">PUBLISHED</span><small th:if="${record.errorCode != null}" th:text="${record.errorCode}">ERROR</small></td>
-                        <td><span th:text="${record.channelAccountName != null ? record.channelAccountName : (record.publishedBy != null ? record.publishedBy : '-')}">账号</span></td><td th:text="${record.updatedAt}">time</td>
-                        <td><a class="text-link" th:if="${record.externalUrl != null}" th:href="${record.externalUrl}" target="_blank" rel="noopener noreferrer">打开结果 ↗</a><span class="record-error" th:if="${record.externalUrl == null and record.errorMessage != null}" th:text="${record.errorMessage}">失败信息</span><span th:if="${record.externalUrl == null and record.errorMessage == null}">—</span></td></tr></tbody></table></div></section>
-
-            <section class="card"><div class="card-header"><div><p class="section-kicker">待发布内容</p><h3>内容队列</h3><p>从文章详情页完成审核、平台适配与发布。</p></div><span class="count-badge" th:text="${articles.size()}">0</span></div>
-                <div class="empty-state" th:if="${#lists.isEmpty(articles)}">暂无文章，请先从项目生成内容。</div><div class="table-wrap" th:unless="${#lists.isEmpty(articles)}"><table><thead><tr><th>内容</th><th>阶段</th><th>语言</th><th>版本</th><th>更新时间</th><th>操作</th></tr></thead>
-                    <tbody><tr th:each="article : ${articles}"><td><a class="table-title" th:href="@{/articles/{id}(id=${article.id})}" th:text="${article.title}">标题</a><small th:text="${article.summary}">摘要</small></td>
-                        <td><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span></td><td th:text="${article.language}">zh-CN</td><td th:text="|v${article.currentVersion}|">v1</td><td th:text="${article.updatedAt}">time</td>
-                        <td><div class="row-actions"><a class="text-link" th:if="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'}" th:href="@{/publishing/articles/{id}(id=${article.id})}">选择渠道</a><a class="text-link" th:unless="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'}" th:href="@{/articles/{id}(id=${article.id})}">编辑审核</a>
-                            <form th:if="${canAdmin}" th:action="@{/articles/{id}/delete(id=${article.id})}" method="post" data-confirm="将内容及关联记录移入回收站，确认继续？"><button class="danger-text-button" type="submit">移入回收站</button></form></div></td></tr></tbody></table></div></section>
-
-            <div class="grid-2 section-gap"><section class="card"><div class="card-header"><div><p class="section-kicker">已连接接口</p><h3>自动发布账号</h3></div><span class="count-badge" th:text="${accounts.size()}">0</span></div>
-                <div class="empty-state" th:if="${#lists.isEmpty(accounts)}">还没有 API 渠道账号。</div><div class="compact-list" th:unless="${#lists.isEmpty(accounts)}"><div class="compact-item" th:each="account : ${accounts}"><span><strong th:text="${account.displayName}">账号</strong><small th:text="${channelNames.get(account.type)}">平台</small></span>
-                    <span class="status-pill" th:classappend="| status-${account.status.name().toLowerCase()}|" th:text="${account.status}">ACTIVE</span></div></div></section>
-                <section class="card"><div class="card-header"><div><p class="section-kicker">人工发布平台</p><h3>跳转登录发布</h3><p>不保存平台密码、Cookie 或验证码。</p></div><span class="count-badge" th:text="${manualTargets.size()}">0</span></div>
-                    <div class="compact-list"><div class="compact-item" th:each="channel : ${manualTargets}"><span><strong th:text="${channel.displayName}">平台</strong><small th:text="${channel.contentHint}">格式</small></span><span class="format-badge" th:text="${channel.contentFormat}">MARKDOWN</span></div></div></section></div>
+            <section class="workspace-panel" th:if="${selectedTab == 'coverage'}">
+                <header class="workspace-panel-header"><div><h3>文章 / 渠道覆盖分析</h3><p>用于查看跨渠道覆盖情况，不参与日常发布记录处理。</p></div><strong th:text="|${publicationMatrix.size()} 篇|">0 篇</strong></header>
+                <div class="empty-state" th:if="${#lists.isEmpty(publicationMatrix)}">暂无内容。</div>
+                <div class="coverage-list" th:unless="${#lists.isEmpty(publicationMatrix)}"><article class="coverage-article" th:each="row : ${publicationMatrix}"><header><a class="table-title" th:href="@{/publishing/articles/{id}(id=${row.article.id})}" th:text="${row.article.title}">文章</a><span class="status-pill" th:classappend="| status-${row.article.status.name().toLowerCase()}|" th:text="${articleStatusNames.get(row.article.status)}">草稿</span></header><div class="coverage-channel-list"><div th:each="cell : ${row.cells}"><strong th:text="${cell.channel.displayName}">渠道</strong><span class="matrix-empty" th:if="${cell.latest == null}">未发布</span><a th:if="${cell.latest != null and cell.latest.externalUrl != null}" th:href="${cell.latest.externalUrl}" target="_blank" rel="noopener noreferrer" class="text-link" th:text="${publicationStatusNames.get(cell.latest.status)}">已发布</a><span th:if="${cell.latest != null and cell.latest.externalUrl == null}" class="status-pill" th:classappend="| status-${cell.latest.status.name().toLowerCase()}|" th:text="${publicationStatusNames.get(cell.latest.status)}">发布失败</span></div></div></article></div>
+            </section>
         </main>
-    </div></div></body></html>
+    </div>
+</div>
+</body>
+</html>

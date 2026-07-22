@@ -2,6 +2,7 @@ package io.contentpublisher.platform.infrastructure.persistence;
 
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.ChannelVerificationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -26,6 +27,10 @@ class ChannelAccountEntity {
     @Column(name = "credential_fingerprint", nullable = false, length = 64) String credentialFingerprint;
     @Column(name = "account_version", nullable = false) int accountVersion;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 30) ChannelAccountStatus status;
+    @Enumerated(EnumType.STRING) @Column(name = "verification_status", length = 20)
+    ChannelVerificationStatus verificationStatus;
+    @Column(name = "verification_message", length = 500) String verificationMessage;
+    @Column(name = "last_verified_at") Instant lastVerifiedAt;
     @Column(name = "created_by", nullable = false, length = 200) String createdBy;
     @Column(name = "updated_by", nullable = false, length = 200) String updatedBy;
     @Column(name = "created_at", nullable = false) Instant createdAt;

@@ -46,18 +46,18 @@
                     <div class="compact-list" th:unless="${#lists.isEmpty(recentArticles)}">
                         <a class="compact-item" th:each="article : ${recentArticles}" th:href="@{/articles/{id}(id=${article.id})}">
                             <span><strong th:text="${article.title}">文章标题</strong><small th:text="|v${article.currentVersion} · ${article.language}|">版本</small></span>
-                            <span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span>
+                            <span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${articleStatusNames.get(article.status)}">草稿</span>
                         </a>
                     </div>
                 </section>
                 <section class="card">
                     <div class="card-header"><div><p class="section-kicker">后台任务</p><h3>最近任务</h3></div>
-                        <a class="text-link" th:href="@{/projects}">任务中心</a></div>
+                        <a class="text-link" th:href="@{/jobs}">查看全部</a></div>
                     <div class="empty-state" th:if="${#lists.isEmpty(recentJobs)}">当前没有后台任务。</div>
                     <div class="compact-list" th:unless="${#lists.isEmpty(recentJobs)}">
                         <a class="compact-item" th:each="job : ${recentJobs}" th:href="@{/jobs/{id}(id=${job.id})}">
-                            <span><strong th:text="${job.type}">TYPE</strong><small th:text="${job.updatedAt}">time</small></span>
-                            <span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${job.status}">PENDING</span>
+                            <span><strong th:text="${jobTypeNames.get(job.type)}">任务</strong><small th:text="${job.updatedAt}">time</small></span>
+                            <span class="status-pill" th:classappend="| status-${job.status.name().toLowerCase()}|" th:text="${jobStatusNames.get(job.status)}">等待执行</span>
                         </a>
                     </div>
                 </section>

@@ -29,6 +29,8 @@ import io.contentpublisher.platform.application.port.ManualPublicationRepository
 import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
 import io.contentpublisher.platform.application.port.ChannelPublisher;
+import io.contentpublisher.platform.application.port.ChannelConnectionVerifier;
+import io.contentpublisher.platform.application.port.ChannelCredentialRefresher;
 import io.contentpublisher.platform.application.port.WebsiteInspector;
 import io.contentpublisher.platform.application.port.MonitoringQuery;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -104,8 +106,11 @@ public class InfrastructureConfiguration {
     ChannelAccountApplicationService channelAccountApplicationService(ChannelAccountRepository accounts,
                                                                       CredentialVault credentialVault,
                                                                       ChannelEndpointPolicy endpointPolicy,
-                                                                      AuditRecorder auditRecorder, Clock clock) {
-        return new ChannelAccountApplicationService(accounts, credentialVault, endpointPolicy, auditRecorder, clock);
+                                                                      AuditRecorder auditRecorder,
+                                                                      ChannelConnectionVerifier connectionVerifier,
+                                                                      Clock clock) {
+        return new ChannelAccountApplicationService(accounts, credentialVault, endpointPolicy, auditRecorder,
+                connectionVerifier, clock);
     }
 
     @Bean
@@ -121,12 +126,13 @@ public class InfrastructureConfiguration {
                                                                               ManualPublicationRepository manual,
                                                                               CredentialVault credentialVault,
                                                                               ChannelEndpointPolicy endpointPolicy,
+                                                                              ChannelCredentialRefresher credentialRefresher,
                                                                               List<ChannelPublisher> publishers,
                                                                               AuditRecorder auditRecorder,
                                                                               PlatformContentAdapter contentAdapter,
                                                                               Clock clock) {
         return new PublicationCommandApplicationService(articles, accounts, publications, manual, credentialVault,
-                endpointPolicy, publishers, auditRecorder, contentAdapter, clock);
+                endpointPolicy, credentialRefresher, publishers, auditRecorder, contentAdapter, clock);
     }
 
     @Bean

@@ -10,6 +10,7 @@ import java.util.UUID;
 public record PublicationRecord(
         UUID id,
         UUID articleId,
+        String articleTitle,
         ChannelType channelType,
         PublicationMethod method,
         PublicationStatus status,

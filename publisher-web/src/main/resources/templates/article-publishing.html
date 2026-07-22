@@ -5,39 +5,40 @@
 <body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('article-publishing')}"></aside>
     <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('发布中心', '选择渠道并跟踪文章发布结果')}"></header>
         <main class="page-content">
-            <section class="page-header"><div><p class="section-kicker">文章发布</p><h2 th:text="${article.title}">文章标题</h2><p th:text="|主稿 v${article.currentVersion} · ${article.language} · ${article.status}|">版本信息</p></div>
+            <section class="page-header"><div><h2 th:text="${article.title}">文章标题</h2><p th:text="|主稿 v${article.currentVersion} · ${article.language} · ${articleStatusName}|">版本信息</p></div>
                 <div class="header-actions"><a class="secondary-link" th:href="@{/articles/{id}(id=${article.id})}">查看主稿</a><a class="secondary-link" th:href="@{/publishing}">返回发布中心</a></div></section>
             <div class="alert warning" th:if="${article.status.name() != 'APPROVED' and article.status.name() != 'PUBLISHED'}">文章尚未审核通过，请先返回内容库完成审核。</div>
 
             <div class="content-aside-grid">
                 <div>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">人工发布</p><h3>跳转平台发布</h3><p>系统按平台生成对应格式；登录平台完成发布后，回填公开链接形成统一记录。</p></div><span class="card-badge" th:text="${manualTargets.size()}">0</span></div>
-                        <div class="channel-grid"><article class="channel-card" th:each="channel : ${manualTargets}">
-                            <div class="channel-card-header"><span class="channel-logo" th:text="${#strings.substring(channel.displayName(),0,1)}">P</span><span class="format-badge" th:text="${channel.contentFormat()}">MARKDOWN</span><span class="format-badge" th:text="${channel.region().name() == 'OVERSEAS'} ? '国外 · 英文版' : '国内 · 中文版'">国内 · 中文版</span></div>
-                            <h4 th:text="${channel.displayName()}">平台</h4><p th:text="${channel.contentHint()}">格式</p><div class="channel-card-footer"><span class="service-badge" th:text="${channel.apiSupported()} ? 'API + 人工' : '人工发布'">人工</span>
-                                <a class="channel-action" th:if="${canEdit and (article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED')}" th:href="@{/articles/{id}/manual/{type}(id=${article.id},type=${channel.type()})}">准备发布 →</a>
-                                <span class="channel-action" th:unless="${canEdit and (article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED')}" th:text="${canEdit} ? '等待审核' : '只读'">等待审核</span>
-                            </div></article></div>
+                    <section class="workspace-panel"><header class="workspace-panel-header"><div><h3>人工发布</h3><p>生成平台所需格式，完成发布后回填公开链接。</p></div><strong th:text="|${manualTargets.size()} 个平台|">0 个平台</strong></header>
+                        <div class="manual-channel-list"><div class="manual-channel-row" th:each="channel : ${manualTargets}">
+                            <span><strong th:text="${channel.displayName()}">平台</strong><small th:text="|${channel.region().name() == 'OVERSEAS' ? '国外 / 英文版' : '国内 / 中文版'} · ${channel.contentFormat()} · ${channel.contentHint()}|">平台要求</small></span>
+                            <a class="text-link" th:if="${canEdit and (article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED')}" th:href="@{/articles/{id}/manual/{type}(id=${article.id},type=${channel.type()})}">准备发布</a>
+                            <span class="muted-action" th:unless="${canEdit and (article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED')}" th:text="${canEdit} ? '等待审核' : '只读'">等待审核</span>
+                        </div></div>
                     </section>
 
-                    <section class="card section-gap"><div class="card-header"><div><p class="section-kicker">发布记录</p><h3>文章发布历史</h3><p>API 与人工发布结果统一归档在发布中心。</p></div><span class="count-badge" th:text="${publicationRecords.size()}">0</span></div>
+                    <section class="workspace-panel section-gap"><header class="workspace-panel-header"><div><h3>文章发布历史</h3><p>API 与人工发布结果统一归档。</p></div><strong th:text="|${publicationRecords.size()} 条|">0 条</strong></header>
                         <div class="empty-state" th:if="${#lists.isEmpty(publicationRecords)}">暂无发布记录。</div><div class="compact-list" th:unless="${#lists.isEmpty(publicationRecords)}">
-                            <div class="compact-item" th:each="item : ${publicationRecords}"><span><strong th:text="${channelNames.get(item.channelType)}">平台</strong><small th:text="|${item.method} · ${item.updatedAt}|">time</small></span><span>
-                                <a class="text-link" th:if="${item.externalUrl != null}" th:href="${item.externalUrl}" target="_blank" rel="noopener noreferrer">结果 ↗</a><span class="status-pill" th:classappend="| status-${item.status.name().toLowerCase()}|" th:text="${item.status}">PUBLISHED</span></span></div></div>
+                            <div class="compact-item" th:each="item : ${publicationRecords}"><span><strong th:text="${channelNames.get(item.channelType)}">平台</strong><small th:text="|${item.method.name() == 'API' ? 'API 自动发布' : '人工发布'} · ${item.updatedAt}|">time</small></span><span>
+                                <a class="text-link" th:if="${item.externalUrl != null}" th:href="${item.externalUrl}" target="_blank" rel="noopener noreferrer">打开结果</a><span class="status-pill" th:classappend="| status-${item.status.name().toLowerCase()}|" th:text="${item.status.name() == 'PUBLISHED' ? '已发布' : (item.status.name() == 'FAILED' ? '发布失败' : '发布中')}">已发布</span></span></div></div>
                     </section>
                 </div>
 
                 <aside class="sticky-column">
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">接口发布</p><h3>一键多平台发布</h3><p>每个平台独立执行，失败任务可以单独重试。</p></div></div>
+                    <section class="side-panel"><header class="side-panel-header"><h3>批量 API 发布</h3><p>每个渠道独立执行，失败任务可以单独重试。</p></header>
                         <div class="alert warning" th:if="${#lists.isEmpty(channelAccounts)}">尚未配置 API 渠道。前往 <a class="text-link" th:href="@{/channels}">渠道管理</a>添加账号。</div>
+                        <div class="alert warning" th:if="${!#lists.isEmpty(channelAccounts) and readyChannelAccountCount == 0}">当前没有通过发布预检的 API 账号。请按账号提示补齐英文稿、更新凭据或重新验证连接。</div>
                         <form class="stack-form" th:if="${canEdit and !#lists.isEmpty(channelAccounts)}" th:action="@{/articles/{id}/publication-batches(id=${article.id})}" th:object="${batchPublishArticleForm}" method="post">
                             <input type="hidden" th:field="*{idempotencyKey}"><div class="field"><label>发布账号（可多选）</label><div class="compact-list">
-                                <label class="publish-account check-row" th:each="account : ${channelAccounts}"><span><strong th:text="${account.displayName}">账号</strong><small th:text="|${channelNames.get(account.type)} · ${channelRegions.get(account.type).name() == 'OVERSEAS' ? '国外/英文' : '国内/中文'}|">平台</small></span><input type="checkbox" th:field="*{channelAccountIds}" th:value="${account.id}"></label>
+                                <label class="publish-account check-row" th:each="account : ${channelAccounts}" th:classappend="${!publicationPreflights.get(account.id).ready} ? ' preflight-blocked'"><span><strong th:text="${account.displayName}">账号</strong><small th:text="|${channelNames.get(account.type)} · ${channelRegions.get(account.type).name() == 'OVERSEAS' ? '国外/英文' : '国内/中文'}|">平台</small><small class="preflight-state" th:classappend="${publicationPreflights.get(account.id).ready} ? ' ready' : ' blocked'" th:text="${publicationPreflights.get(account.id).message}">预检结果</small></span><input type="checkbox" th:field="*{channelAccountIds}" th:value="${account.id}" th:disabled="${!publicationPreflights.get(account.id).ready}"></label>
                             </div></div><div class="field"><label>原文链接（可选）</label><input th:field="*{canonicalUrl}" type="url" maxlength="2048" placeholder="https://example.com/original"></div>
-                            <button class="primary-button" type="submit" th:disabled="${article.status.name() != 'APPROVED' and article.status.name() != 'PUBLISHED'}">提交多平台发布</button>
+                            <div class="field"><label>计划发布时间（可选，UTC）</label><input th:field="*{scheduledAt}" type="datetime-local"><small>留空立即进入队列；最长可预约一年。</small></div>
+                            <button class="primary-button" type="submit" th:disabled="${readyChannelAccountCount == 0 or (article.status.name() != 'APPROVED' and article.status.name() != 'PUBLISHED')}">提交发布任务</button>
                         </form>
+                        <div class="publish-reference"><h4>发布依据</h4><ul><li th:text="|内容版本 v${article.currentVersion}|">内容版本</li><li th:text="|内容语言 ${article.language}|">语言</li><li>渠道适配不修改内容库主稿</li></ul></div>
                     </section>
-                    <section class="card"><p class="section-kicker">发布依据</p><h3>锁定主稿</h3><ul class="checklist"><li th:text="|内容版本 v${article.currentVersion}|">内容版本</li><li th:text="|内容语言 ${article.language}|">语言</li><li>渠道适配不修改内容库主稿</li></ul></section>
                 </aside>
             </div>
         </main>

@@ -1,13 +1,17 @@
 package io.contentpublisher.platform.infrastructure.channels;
 
 import io.contentpublisher.platform.application.ApplicationException;
+import io.contentpublisher.platform.application.ChannelCredentialRefreshResult;
+import io.contentpublisher.platform.application.ChannelCatalog;
 import io.contentpublisher.platform.application.PublishingApplicationService;
 import io.contentpublisher.platform.application.PlatformContentAdapter;
+import io.contentpublisher.platform.application.PublicationCommandApplicationService;
 import io.contentpublisher.platform.application.PublicationMethod;
 import io.contentpublisher.platform.application.port.ArticleRepository;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
 import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
+import io.contentpublisher.platform.application.port.ChannelCredentialRefresher;
 import io.contentpublisher.platform.application.port.ChannelPublisher;
 import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.application.port.PublicationRepository;
@@ -23,6 +27,7 @@ import io.contentpublisher.platform.domain.PublicationStatus;
 import io.contentpublisher.platform.domain.ContentFormat;
 import io.contentpublisher.platform.domain.ManualPublication;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -36,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
@@ -55,6 +61,34 @@ class PublishingApplicationServiceTest {
     }
 
     @Test
+    void shouldKeepMediumExistingAccountsOperationalWithoutAllowingNewAccounts() {
+        var medium = ChannelCatalog.definition(ChannelType.MEDIUM);
+
+        assertThat(medium.configurationAllowed()).isFalse();
+        assertThat(medium.existingAccountOperational()).isTrue();
+        assertThat(medium.availabilityLabel()).isEqualTo("停止新接入");
+    }
+
+    @Test
+    void shouldBlockOverseasPreflightWhenEnglishContentIsMissing() {
+        Fixture fixture = fixture(ArticleStatus.APPROVED);
+        Article articleWithoutEnglish = new Article(fixture.article.id(), fixture.article.tenantId(),
+                fixture.article.origin(), fixture.article.generationJobId(), fixture.article.title(),
+                fixture.article.summary(), fixture.article.markdown(), fixture.article.tags(),
+                fixture.article.keywords(), "", "", "", List.of(), List.of(), fixture.article.language(),
+                fixture.article.sourceRevision(), fixture.article.currentVersion(), fixture.article.status(),
+                fixture.article.createdBy(), fixture.article.updatedBy(), fixture.article.createdAt(),
+                fixture.article.updatedAt());
+        when(fixture.articles.findArticleById("tenant", fixture.article.id()))
+                .thenReturn(Optional.of(articleWithoutEnglish));
+
+        var result = fixture.service.preflight(ACTOR, fixture.article.id(), fixture.account.id());
+
+        assertThat(result.ready()).isFalse();
+        assertThat(result.message()).contains("暂无英文版本").contains("补充英文标题、摘要和正文");
+    }
+
+    @Test
     void shouldCreatePublicationAndMarkArticlePublished() {
         Fixture fixture = fixture(ArticleStatus.APPROVED);
         UUID jobId = UUID.randomUUID();
@@ -64,6 +98,59 @@ class PublishingApplicationServiceTest {
 
         assertThat(result.status()).isEqualTo(PublicationStatus.PUBLISHED);
         assertThat(result.externalUrl()).isEqualTo("https://dev.to/example/article");
+    }
+
+    @Test
+    void shouldPersistAutomaticallyRefreshedCredentialsBeforePublishing() {
+        ArticleRepository articles = mock(ArticleRepository.class);
+        ChannelAccountRepository accounts = mock(ChannelAccountRepository.class);
+        PublicationRepository publications = mock(PublicationRepository.class);
+        ManualPublicationRepository manualPublications = mock(ManualPublicationRepository.class);
+        CredentialVault vault = mock(CredentialVault.class);
+        ChannelEndpointPolicy endpointPolicy = mock(ChannelEndpointPolicy.class);
+        ChannelCredentialRefresher refresher = mock(ChannelCredentialRefresher.class);
+        ChannelPublisher publisher = mock(ChannelPublisher.class);
+        AuditRecorder audits = mock(AuditRecorder.class);
+        Article article = article(ArticleStatus.APPROVED);
+        ChannelAccount account = new ChannelAccount(UUID.randomUUID(), "tenant", ChannelType.X, "X",
+                "https://api.x.com", "encrypted-x", "channel-x-001", "a".repeat(64), "b".repeat(64), 1,
+                ChannelAccountStatus.ACTIVE, "admin", "admin", NOW, NOW);
+        Map<String, String> currentCredentials = Map.of(
+                "accessToken", "old-access", "refreshToken", "old-refresh",
+                "clientId", "client-id", "clientSecret", "client-secret");
+        Map<String, String> refreshedCredentials = Map.of(
+                "accessToken", "new-access", "refreshToken", "new-refresh",
+                "clientId", "client-id", "clientSecret", "client-secret");
+        when(articles.findArticleById("tenant", article.id())).thenReturn(Optional.of(article));
+        when(articles.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accounts.findChannelAccountById("tenant", account.id())).thenReturn(Optional.of(account));
+        when(accounts.updateIfVersionMatches(any(), anyInt()))
+                .thenAnswer(invocation -> Optional.of(invocation.getArgument(0)));
+        when(publications.findByPublicationJobId(any(), any())).thenReturn(Optional.empty());
+        when(publications.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(endpointPolicy.validateAndNormalize(ChannelType.X, account.baseUrl())).thenReturn(account.baseUrl());
+        when(vault.decrypt("encrypted-x")).thenReturn(currentCredentials);
+        when(vault.fingerprint(refreshedCredentials)).thenReturn("e".repeat(64));
+        when(vault.encrypt(refreshedCredentials)).thenReturn("encrypted-refreshed-x");
+        when(refresher.refresh(account, currentCredentials))
+                .thenReturn(new ChannelCredentialRefreshResult(refreshedCredentials, true));
+        when(publisher.channelType()).thenReturn(ChannelType.X);
+        when(publisher.publish(any(), any(), eq(refreshedCredentials)))
+                .thenReturn(new ChannelPublisher.PublishResult("x-42", "https://x.com/i/web/status/x-42"));
+        var service = new PublicationCommandApplicationService(articles, accounts, publications,
+                manualPublications, vault, endpointPolicy, refresher, List.of(publisher), audits,
+                new PlatformContentAdapter(), Clock.fixed(NOW, ZoneOffset.UTC));
+
+        Publication result = service.publish(ACTOR, article.id(), account.id(),
+                "https://example.com/article", UUID.randomUUID());
+
+        ArgumentCaptor<ChannelAccount> savedAccount = ArgumentCaptor.forClass(ChannelAccount.class);
+        verify(accounts).updateIfVersionMatches(savedAccount.capture(), eq(1));
+        assertThat(savedAccount.getValue().version()).isEqualTo(2);
+        assertThat(savedAccount.getValue().encryptedCredentials()).isEqualTo("encrypted-refreshed-x");
+        assertThat(savedAccount.getValue().credentialFingerprint()).isEqualTo("e".repeat(64));
+        assertThat(result.externalUrl()).isEqualTo("https://x.com/i/web/status/x-42");
+        verify(publisher).publish(any(), any(), eq(refreshedCredentials));
     }
 
     @Test

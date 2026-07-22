@@ -13,6 +13,9 @@ public class PublishArticleForm {
     @Size(max = 2048, message = "原文链接不能超过 2048 个字符")
     private String canonicalUrl;
 
+    @Size(max = 40, message = "计划发布时间格式无效")
+    private String scheduledAt;
+
     @Pattern(regexp = "[A-Za-z0-9._:-]{8,128}")
     private String idempotencyKey;
 
@@ -20,6 +23,8 @@ public class PublishArticleForm {
     public void setChannelAccountId(UUID channelAccountId) { this.channelAccountId = channelAccountId; }
     public String getCanonicalUrl() { return canonicalUrl; }
     public void setCanonicalUrl(String canonicalUrl) { this.canonicalUrl = canonicalUrl; }
+    public String getScheduledAt() { return scheduledAt; }
+    public void setScheduledAt(String scheduledAt) { this.scheduledAt = scheduledAt; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 }

@@ -92,8 +92,8 @@ class ArchitectureBoundaryTest {
     @Test
     void portalResponsibilitiesShouldRemainSplit() {
         assertThat(requestMethodCount(ContentCreationPortalController.class)).isEqualTo(6);
-        assertThat(requestMethodCount(ContentLibraryPortalController.class)).isEqualTo(5);
-        assertThat(requestMethodCount(JobPortalController.class)).isEqualTo(2);
+        assertThat(requestMethodCount(ContentLibraryPortalController.class)).isEqualTo(6);
+        assertThat(requestMethodCount(JobPortalController.class)).isEqualTo(3);
         assertThat(requestMethodCount(RecycleBinPortalController.class)).isEqualTo(5);
         assertThatThrownBy(() -> Class.forName(
                 "io.contentpublisher.platform.web.controller.PortalManagementController"))
@@ -103,7 +103,7 @@ class ArchitectureBoundaryTest {
     @Test
     void channelCredentialDefinitionsShouldBeCentralizedAndRenderable() {
         assertThat(ChannelCatalog.automated()).allSatisfy(definition -> {
-            assertThat(definition.credentialFields()).isNotEmpty().hasSizeLessThanOrEqualTo(3);
+            assertThat(definition.credentialFields()).isNotEmpty().hasSizeLessThanOrEqualTo(5);
             assertThat(definition.credentialKeys()).doesNotHaveDuplicates();
             assertThat(definition.credentialLabelsAttribute()).isNotBlank();
         });

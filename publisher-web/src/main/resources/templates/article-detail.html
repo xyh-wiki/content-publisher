@@ -1,75 +1,76 @@
 <!doctype html>
-<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow"><title th:text="|${article.title} · Content Publisher|">文章</title>
-    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}"><link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script></head>
-<body class="app-page"><div class="app-layout"><aside th:replace="~{fragments/app-shell :: sidebar('content')}"></aside>
-    <div class="app-main"><header th:replace="~{fragments/app-shell :: topbar('内容库', '编辑、审核并维护可信内容主稿')}"></header>
-        <main class="page-content">
-            <div class="process-rail"><div class="process-item done"><span>✓</span><div><strong>确定来源</strong><small th:text="${article.sourceType.name() == 'GIT' ? '仓库已读取' : (article.sourceType.name() == 'WEBSITE' ? '网站已分析' : '简报已确认')}">来源已确认</small></div></div>
-                <div class="process-item done"><span>✓</span><div><strong>生成文章</strong><small>主稿已创建</small></div></div>
-                <div class="process-item" th:classappend="${article.status.name() == 'DRAFT' or article.status.name() == 'REJECTED'} ? ' active' : ' done'"><span th:text="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'} ? '✓' : '3'">3</span><div><strong>编辑审核</strong><small>确认发布基线</small></div></div>
-                <div class="process-item" th:classappend="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'} ? ' active'"><span>4</span><div><strong>适配发布</strong><small>分发到各平台</small></div></div></div>
-            <section class="page-header"><div><p class="section-kicker">文章主稿</p><h2 th:text="${article.title}">文章标题</h2>
-                <p th:text="|主稿 v${article.currentVersion} · ${article.language} · 源版本 ${article.sourceRevision}|">meta</p></div>
-                <div class="header-actions"><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${article.status}">DRAFT</span>
-                    <a class="secondary-link" th:if="${article.projectId != null}" th:href="@{/projects/{id}(id=${article.projectId})}">返回项目</a><a class="secondary-link" th:if="${article.projectId == null}" th:href="@{/content}">返回内容库</a>
-                    <form th:if="${canAdmin}" class="inline-action-form" th:action="@{/articles/{id}/delete(id=${article.id})}" method="post" data-confirm="将文章版本、发布记录和关联终态任务一并移入回收站，确认继续？"><button class="danger-link" type="submit">移入回收站</button></form></div></section>
+    <link rel="icon" type="image/svg+xml" th:href="@{/assets/logo.svg}">
+    <link rel="stylesheet" th:href="@{/assets/app.css}"><script defer th:src="@{/assets/app.js}"></script>
+</head>
+<body class="app-page">
+<div class="app-layout">
+    <aside th:replace="~{fragments/app-shell :: sidebar('content')}"></aside>
+    <div class="app-main">
+        <header th:replace="~{fragments/app-shell :: topbar('内容编辑', '维护主稿、审核状态和版本记录')}"></header>
+        <main class="page-content article-editor-page">
+            <section class="page-header compact-page-header"><div><h2 th:text="${article.title}">文章标题</h2><p th:text="|主稿 v${article.currentVersion} · ${article.language} · 源版本 ${article.sourceRevision}|">meta</p></div><div class="header-actions"><span class="status-pill" th:classappend="| status-${article.status.name().toLowerCase()}|" th:text="${articleStatusNames.get(article.status)}">草稿</span><a class="secondary-link" th:if="${article.projectId != null}" th:href="@{/projects/{id}(id=${article.projectId})}">返回项目</a><a class="secondary-link" th:if="${article.projectId == null}" th:href="@{/content}">返回内容库</a></div></section>
             <div class="alert error" th:if="${error}" th:text="${error}"></div><div class="alert success" th:if="${success}" th:text="${success}"></div>
 
-            <div class="content-aside-grid">
-                <div>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">内容编辑</p><h3>文章主稿（中文 / 国内渠道）</h3><p>只维护一份可信中文主稿。发布到国内渠道时自动使用本节内容。</p></div><span class="card-badge" th:text="|版本 ${article.currentVersion}|">版本 1</span></div>
-                        <div class="alert warning" th:unless="${article.hasEnglishContent()}">该文章暂无英文版本，发布到国外渠道前请先在下方补充英文标题、摘要和正文。</div>
-                        <form class="stack-form" th:action="@{/articles/{id}/edit(id=${article.id})}" th:object="${updateArticleForm}" method="post">
-                            <input type="hidden" th:field="*{expectedVersion}"><div class="field"><label>文章标题</label><input th:field="*{title}" maxlength="500" required th:readonly="${!editable or !canEdit}"></div>
-                            <div class="field"><label>内容摘要 / Meta Description</label><textarea th:field="*{summary}" rows="4" maxlength="2000" required th:readonly="${!editable or !canEdit}"></textarea><small>生成时已按搜索摘要优化；建议保持 50–200 字符并自然包含主关键词。</small></div>
-                            <div class="grid-2"><div class="field"><label>发布标签</label><textarea th:field="*{tags}" rows="3" placeholder="每行或逗号分隔，例如：Spring Boot、可观测性" th:readonly="${!editable or !canEdit}"></textarea><small>用于平台 Hashtag 和内容分类，最多 15 个。</small></div>
-                                <div class="field"><label>SEO 关键词</label><textarea th:field="*{keywords}" rows="3" placeholder="每行或逗号分隔，例如：Spring Boot 可观测性教程" th:readonly="${!editable or !canEdit}"></textarea><small>第一项视为主关键词，后续为长尾词、问题词和场景词，最多 30 个。</small></div></div>
-                            <div class="field"><label>Markdown 正文</label><textarea class="markdown-editor" th:field="*{markdown}" rows="30" maxlength="20000" required th:readonly="${!editable or !canEdit}"></textarea></div>
+            <section class="editor-action-bar" aria-label="文章操作">
+                <div><strong th:text="|版本 ${article.currentVersion}|">版本 1</strong><span th:if="${editable and canEdit}">修改后保存为新版本</span><span th:unless="${editable and canEdit}">当前版本为只读状态</span></div>
+                <div class="editor-action-buttons"><button class="primary-button" type="submit" form="article-edit-form" th:if="${editable and canEdit}">保存新版本</button><form th:if="${canAdmin and editable}" th:action="@{/articles/{id}/approve(id=${article.id})}" method="post"><button class="secondary-button" type="submit">审核通过</button></form><a class="primary-link" th:if="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'}" th:href="@{/publishing/articles/{id}(id=${article.id})}">进入发布中心</a></div>
+            </section>
 
-                            <h3>英文版本（国外渠道）</h3><p>发布到国外渠道（如 DEV、Medium、X、LinkedIn 等）时自动使用本节内容。</p>
-                            <div class="field"><label>English Title</label><input th:field="*{titleEn}" maxlength="500" th:readonly="${!editable or !canEdit}"></div>
-                            <div class="field"><label>English Summary</label><textarea th:field="*{summaryEn}" rows="4" maxlength="2000" th:readonly="${!editable or !canEdit}"></textarea></div>
-                            <div class="grid-2"><div class="field"><label>English Tags</label><textarea th:field="*{tagsEn}" rows="3" placeholder="One per line or comma separated" th:readonly="${!editable or !canEdit}"></textarea></div>
-                                <div class="field"><label>English Keywords</label><textarea th:field="*{keywordsEn}" rows="3" placeholder="One per line or comma separated" th:readonly="${!editable or !canEdit}"></textarea></div></div>
-                            <div class="field"><label>English Markdown Body</label><textarea class="markdown-editor" th:field="*{markdownEn}" rows="30" maxlength="20000" th:readonly="${!editable or !canEdit}"></textarea></div>
+            <div class="article-editor-layout">
+                <section class="editor-workspace" data-editor-workspace>
+                    <nav class="editor-tabs" role="tablist" aria-label="内容语言与预览">
+                        <button id="editor-tab-zh" type="button" role="tab" aria-selected="true" aria-controls="editor-panel-zh" data-editor-tab="zh">中文主稿</button>
+                        <button id="editor-tab-en" type="button" role="tab" aria-selected="false" aria-controls="editor-panel-en" data-editor-tab="en">English <span th:if="${!article.hasEnglishContent()}">待补充</span></button>
+                        <button id="editor-tab-preview" type="button" role="tab" aria-selected="false" aria-controls="editor-panel-preview" data-editor-tab="preview">预览</button>
+                    </nav>
 
-                            <div class="form-footer"><small th:if="${!editable}">审核通过或已发布文章不能直接修改。</small><span th:if="${editable}"></span>
-                                <button class="primary-button" type="submit" th:disabled="${!editable or !canEdit}">保存为新版本</button></div>
-                        </form>
-                    </section>
+                    <form id="article-edit-form" class="stack-form editor-form" th:action="@{/articles/{id}/edit(id=${article.id})}" th:object="${updateArticleForm}" method="post" data-dirty-form>
+                        <input type="hidden" th:field="*{expectedVersion}">
+                        <section id="editor-panel-zh" class="editor-tab-panel" role="tabpanel" aria-labelledby="editor-tab-zh" data-editor-panel="zh">
+                            <div class="field"><label for="article-title">文章标题</label><input id="article-title" th:field="*{title}" maxlength="500" required th:readonly="${!editable or !canEdit}"></div>
+                            <div class="field"><label for="article-summary">摘要 / Meta Description</label><textarea id="article-summary" th:field="*{summary}" rows="4" maxlength="2000" required th:readonly="${!editable or !canEdit}"></textarea><small>建议保持 50–200 字符，准确说明文章内容。</small></div>
+                            <div class="form-grid"><div class="field"><label for="article-tags">发布标签</label><textarea id="article-tags" th:field="*{tags}" rows="3" placeholder="每行或逗号分隔" th:readonly="${!editable or !canEdit}"></textarea></div><div class="field"><label for="article-keywords">SEO 关键词</label><textarea id="article-keywords" th:field="*{keywords}" rows="3" placeholder="第一项为主关键词" th:readonly="${!editable or !canEdit}"></textarea></div></div>
+                            <div class="field"><label for="article-markdown">Markdown 正文</label><textarea id="article-markdown" class="markdown-editor" th:field="*{markdown}" rows="30" maxlength="20000" required th:readonly="${!editable or !canEdit}" data-preview-source="zh"></textarea></div>
+                        </section>
 
-                    <section class="card" th:if="${canAdmin}"><div class="card-header"><div><p class="section-kicker">内容审核</p><h3>内容审核</h3><p>审核通过后主稿锁定，并开放 API 发布与人工跳转发布。</p></div></div>
-                        <div class="grid-2"><div><form th:action="@{/articles/{id}/approve(id=${article.id})}" method="post"><button class="primary-button" type="submit">审核通过并进入发布</button></form></div>
-                            <form class="stack-form" th:action="@{/articles/{id}/reject(id=${article.id})}" th:object="${rejectArticleForm}" method="post"><div class="field"><label>驳回原因</label><textarea th:field="*{reason}" rows="2" maxlength="500" required></textarea></div><button class="danger-button" type="submit">驳回修改</button></form></div>
-                    </section>
+                        <section id="editor-panel-en" class="editor-tab-panel" role="tabpanel" aria-labelledby="editor-tab-en" data-editor-panel="en" hidden>
+                            <div class="editor-language-note" th:unless="${article.hasEnglishContent()}">国外渠道需要英文标题、摘要和正文；留空时不会允许发布到对应渠道。</div>
+                            <div class="field"><label for="article-title-en">English Title</label><input id="article-title-en" th:field="*{titleEn}" maxlength="500" th:readonly="${!editable or !canEdit}"></div>
+                            <div class="field"><label for="article-summary-en">English Summary</label><textarea id="article-summary-en" th:field="*{summaryEn}" rows="4" maxlength="2000" th:readonly="${!editable or !canEdit}"></textarea></div>
+                            <div class="form-grid"><div class="field"><label for="article-tags-en">English Tags</label><textarea id="article-tags-en" th:field="*{tagsEn}" rows="3" placeholder="One per line or comma separated" th:readonly="${!editable or !canEdit}"></textarea></div><div class="field"><label for="article-keywords-en">English Keywords</label><textarea id="article-keywords-en" th:field="*{keywordsEn}" rows="3" th:readonly="${!editable or !canEdit}"></textarea></div></div>
+                            <div class="field"><label for="article-markdown-en">English Markdown Body</label><textarea id="article-markdown-en" class="markdown-editor" th:field="*{markdownEn}" rows="30" maxlength="20000" th:readonly="${!editable or !canEdit}" data-preview-source="en"></textarea></div>
+                        </section>
 
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">流程交接</p><h3>进入发布中心</h3>
-                        <p>内容审核通过后，渠道选择、平台适配、发布任务和发布记录统一在发布中心处理。</p></div>
-                        <a class="primary-link" th:if="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'}" th:href="@{/publishing/articles/{id}(id=${article.id})}">配置发布 →</a>
-                        <span class="status-pill" th:unless="${article.status.name() == 'APPROVED' or article.status.name() == 'PUBLISHED'}">等待审核</span></div></section>
+                        <section id="editor-panel-preview" class="editor-tab-panel markdown-preview-panel" role="tabpanel" aria-labelledby="editor-tab-preview" data-editor-panel="preview" data-preview-url="/api/v1/markdown/preview" hidden>
+                            <div class="preview-toolbar"><div><strong>Markdown 预览</strong><small>预览内容经过服务端安全清理</small></div><div><button class="secondary-button" type="button" data-render-preview="zh">预览中文</button><button class="secondary-button" type="button" data-render-preview="en">Preview English</button></div></div>
+                            <div class="markdown-preview" data-markdown-preview><p>选择语言后生成预览。</p></div>
+                            <div class="preview-state" data-preview-state aria-live="polite"></div>
+                        </section>
+                    </form>
+                </section>
 
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">版本记录</p><h3>不可变版本记录</h3></div><span class="count-badge" th:text="${versions.size()}">1</span></div>
-                        <div class="table-wrap"><table><thead><tr><th>版本</th><th>标题</th><th>创建人</th><th>创建时间</th></tr></thead><tbody><tr th:each="version : ${versions}">
-                            <td th:text="${version.versionNumber}">1</td><td th:text="${version.title}">title</td><td th:text="${version.createdBy}">admin</td><td th:text="${version.createdAt}">time</td></tr></tbody></table></div></section>
-                </div>
-
-                <aside class="sticky-column">
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">内容来源</p><h3>文章来源</h3></div><span class="format-badge" th:text="${article.sourceType}">GIT</span></div>
-                        <div th:if="${article.sourceType.name() == 'GIT'}"><p>基于 Git 仓库快照生成。</p><small class="mono" th:text="${article.sourceRevision}">revision</small></div>
-                        <div th:if="${article.sourceType.name() == 'TOPIC'}"><strong th:text="${article.origin.title}">主题</strong><p th:text="${article.origin.description}">描述</p><small th:text="|${article.origin.articleType} · ${article.origin.knowledgeLevel} · ${article.origin.audience}|">meta</small></div>
-                        <div th:if="${article.sourceType.name() == 'WEBSITE'}"><strong th:text="${article.origin.title}">网站</strong><p th:text="${article.origin.description}">推荐角度</p><a class="text-link" th:href="${article.origin.sourceUrl}" target="_blank" rel="noopener noreferrer">访问来源网站 ↗</a></div></section>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">搜索优化</p><h3>SEO 质量检查</h3></div><span class="seo-grade" th:text="${seo.grade}">良好</span></div>
-                        <div class="seo-score-summary"><strong th:text="${seo.score}">85</strong><span>/ 100</span></div><progress class="seo-score-progress" max="100" th:value="${seo.score}">85</progress>
-                        <p class="seo-primary-keyword" th:if="${!#strings.isEmpty(seo.primaryKeyword)}" th:text="|主关键词：${seo.primaryKeyword}|">主关键词</p>
-                        <div class="seo-check-list"><div class="seo-check" th:each="check : ${seo.checks}" th:classappend="${check.passed} ? ' passed' : ' pending'"><span th:text="${check.passed} ? '✓' : '!'">✓</span><div><strong th:text="${check.label}">检查项</strong><small th:text="${check.detail}">说明</small></div></div></div></section>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">发布标签</p><h3>发布标签</h3></div></div>
-                        <div class="tag-row"><span class="tag" th:each="tag : ${article.tags}" th:text="${tag}">tag</span><span th:if="${#lists.isEmpty(article.tags)}">暂无标签</span></div></section>
-                    <section class="card"><div class="card-header"><div><p class="section-kicker">推荐关键词</p><h3>推荐关键词</h3></div></div>
-                        <div class="tag-row"><span class="tag" th:each="keyword : ${article.keywords}" th:text="${keyword}">keyword</span><span th:if="${#lists.isEmpty(article.keywords)}">暂无推荐关键词</span></div></section>
-
-                    <section class="card"><p class="section-kicker">模块边界</p><h3>主稿与发布分离</h3><ul class="checklist"><li>内容库维护正文和版本</li><li>管理员在此完成审核</li><li>发布中心负责渠道和结果</li></ul></section>
+                <aside class="article-auxiliary">
+                    <details open><summary>SEO 质量检查 <span class="seo-grade" th:text="${seo.grade}">良好</span></summary><div class="auxiliary-content"><div class="seo-score-summary"><strong th:text="${seo.score}">85</strong><span>/ 100</span></div><progress class="seo-score-progress" max="100" th:value="${seo.score}">85</progress><p class="seo-primary-keyword" th:if="${!#strings.isEmpty(seo.primaryKeyword)}" th:text="|主关键词：${seo.primaryKeyword}|">主关键词</p><div class="seo-check-list"><div class="seo-check" th:each="check : ${seo.checks}" th:classappend="${check.passed} ? ' passed' : ' pending'"><span th:text="${check.passed} ? '✓' : '!'">✓</span><div><strong th:text="${check.label}">检查项</strong><small th:text="${check.detail}">说明</small></div></div></div></div></details>
+                    <details><summary>文章来源</summary><div class="auxiliary-content"><div th:if="${article.sourceType.name() == 'GIT'}"><p>基于 Git 仓库快照生成。</p><small class="mono" th:text="${article.sourceRevision}">revision</small></div><div th:if="${article.sourceType.name() == 'TOPIC'}"><strong th:text="${article.origin.title}">主题</strong><p th:text="${article.origin.description}">描述</p><small th:text="|${article.origin.articleType} · ${article.origin.knowledgeLevel} · ${article.origin.audience}|">meta</small></div><div th:if="${article.sourceType.name() == 'WEBSITE'}"><strong th:text="${article.origin.title}">网站</strong><p th:text="${article.origin.description}">推荐角度</p><a class="text-link" th:href="${article.origin.sourceUrl}" target="_blank" rel="noopener noreferrer">访问来源网站 ↗</a></div></div></details>
+                    <details><summary>标签与关键词</summary><div class="auxiliary-content"><h4>发布标签</h4><div class="tag-row"><span class="tag" th:each="tag : ${article.tags}" th:text="${tag}">tag</span><span th:if="${#lists.isEmpty(article.tags)}">暂无标签</span></div><h4>推荐关键词</h4><div class="tag-row"><span class="tag" th:each="keyword : ${article.keywords}" th:text="${keyword}">keyword</span><span th:if="${#lists.isEmpty(article.keywords)}">暂无关键词</span></div></div></details>
+                    <details th:if="${canAdmin and article.status.name() != 'PUBLISHED'}"><summary>审核与危险操作</summary><div class="auxiliary-content stack-form"><form class="stack-form" th:if="${article.status.name() != 'REJECTED'}" th:action="@{/articles/{id}/reject(id=${article.id})}" th:object="${rejectArticleForm}" method="post"><div class="field"><label for="reject-reason">驳回原因</label><textarea id="reject-reason" th:field="*{reason}" rows="3" maxlength="500" required></textarea></div><button class="danger-button" type="submit">驳回修改</button></form><form th:action="@{/articles/{id}/delete(id=${article.id})}" method="post" data-confirm="将文章版本、发布记录和关联终态任务一并移入回收站，确认继续？"><button class="danger-link" type="submit">移入回收站</button></form></div></details>
                 </aside>
             </div>
+
+            <section class="version-workspace">
+                <header class="workspace-panel-header"><div><h3>版本记录</h3><p>比较历史内容，或将历史版本恢复为新的当前版本。</p></div><strong th:text="|${versions.size()} 个版本|">1 个版本</strong></header>
+                <form class="version-compare-form" method="get" th:action="@{/articles/{id}(id=${article.id})}"><label for="from-version">比较版本</label><select id="from-version" name="fromVersion" required><option value="">选择历史版本</option><option th:each="version : ${versions}" th:value="${version.versionNumber}" th:text="|v${version.versionNumber} · ${version.createdAt}|" th:selected="${comparisonFrom != null and comparisonFrom.versionNumber == version.versionNumber}"></option></select><label for="to-version">目标版本</label><select id="to-version" name="toVersion"><option th:each="version : ${versions}" th:value="${version.versionNumber}" th:text="|v${version.versionNumber}|" th:selected="${comparisonTo != null ? comparisonTo.versionNumber == version.versionNumber : version.versionNumber == article.currentVersion}"></option></select><button class="secondary-button" type="submit">比较</button></form>
+
+                <div class="version-comparison" th:if="${comparisonFrom != null and comparisonTo != null}"><article><header><strong th:text="|版本 ${comparisonFrom.versionNumber}|">版本 1</strong><span th:text="${comparisonFrom.createdAt}">time</span></header><h4 th:text="${comparisonFrom.title}">标题</h4><p th:text="${comparisonFrom.summary}">摘要</p><pre th:text="${comparisonFrom.markdown}">正文</pre></article><article><header><strong th:text="|版本 ${comparisonTo.versionNumber}|">版本 2</strong><span th:text="${comparisonTo.createdAt}">time</span></header><h4 th:text="${comparisonTo.title}">标题</h4><p th:text="${comparisonTo.summary}">摘要</p><pre th:text="${comparisonTo.markdown}">正文</pre></article></div>
+
+                <div class="table-wrap"><table class="management-table"><thead><tr><th>版本</th><th>标题</th><th>创建人</th><th>创建时间</th><th class="table-actions-column">操作</th></tr></thead><tbody><tr th:each="version : ${versions}"><td th:text="|v${version.versionNumber}|">v1</td><td th:text="${version.title}">title</td><td th:text="${version.createdBy}">admin</td><td th:text="${version.createdAt}">time</td><td><div class="row-actions"><a class="text-link" th:href="@{/articles/{id}(id=${article.id},fromVersion=${version.versionNumber},toVersion=${article.currentVersion})}">与当前比较</a><form th:if="${editable and canEdit and version.versionNumber != article.currentVersion}" th:action="@{/articles/{id}/versions/{version}/restore(id=${article.id},version=${version.versionNumber})}" method="post" data-confirm="将该历史版本恢复为新的当前版本？现有版本不会被覆盖。"><input type="hidden" name="expectedVersion" th:value="${article.currentVersion}"><button class="secondary-button mini-button" type="submit">恢复</button></form></div></td></tr></tbody></table></div>
+            </section>
         </main>
-    </div></div></body></html>
+    </div>
+</div>
+</body>
+</html>

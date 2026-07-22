@@ -3,11 +3,13 @@ package io.contentpublisher.platform.application;
 import io.contentpublisher.platform.application.port.AuditRecorder;
 import io.contentpublisher.platform.application.port.ChannelAccountRepository;
 import io.contentpublisher.platform.application.port.ChannelEndpointPolicy;
+import io.contentpublisher.platform.application.port.ChannelConnectionVerifier;
 import io.contentpublisher.platform.application.port.CredentialVault;
 import io.contentpublisher.platform.domain.ActorContext;
 import io.contentpublisher.platform.domain.ChannelAccount;
 import io.contentpublisher.platform.domain.ChannelAccountStatus;
 import io.contentpublisher.platform.domain.ChannelType;
+import io.contentpublisher.platform.domain.ChannelVerificationStatus;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -25,23 +27,36 @@ public final class ChannelAccountApplicationService {
     private final CredentialVault credentialVault;
     private final ChannelEndpointPolicy endpointPolicy;
     private final AuditRecorder auditRecorder;
+    private final ChannelConnectionVerifier connectionVerifier;
     private final Clock clock;
 
     public ChannelAccountApplicationService(ChannelAccountRepository accounts, CredentialVault credentialVault,
                                             ChannelEndpointPolicy endpointPolicy, AuditRecorder auditRecorder,
                                             Clock clock) {
+        this(accounts, credentialVault, endpointPolicy, auditRecorder,
+                (account, credentials) -> ChannelConnectionResult.failure("当前运行环境未配置渠道连接验证器"), clock);
+    }
+
+    public ChannelAccountApplicationService(ChannelAccountRepository accounts, CredentialVault credentialVault,
+                                            ChannelEndpointPolicy endpointPolicy, AuditRecorder auditRecorder,
+                                            ChannelConnectionVerifier connectionVerifier, Clock clock) {
         this.accounts = accounts;
         this.credentialVault = credentialVault;
         this.endpointPolicy = endpointPolicy;
         this.auditRecorder = auditRecorder;
+        this.connectionVerifier = connectionVerifier;
         this.clock = clock;
     }
 
     public ChannelAccount createAccount(ActorContext actor, ChannelType type, String displayName,
                                         String baseUrl, Map<String, String> credentials, String idempotencyKey) {
         validateIdempotencyKey(idempotencyKey);
-        if (!ChannelCatalog.definition(type).apiSupported()) {
+        ChannelCatalog.ChannelDefinition definition = ChannelCatalog.definition(type);
+        if (!definition.apiSupported()) {
             throw new ApplicationException("CHANNEL_MANUAL_ONLY", "该渠道采用跳转登录和人工发布，无需配置 API 账号");
+        }
+        if (!definition.configurationAllowed()) {
+            throw new ApplicationException("CHANNEL_CONFIGURATION_UNAVAILABLE", definition.availabilityNote());
         }
         String name = requireText(displayName, "渠道账号名称不能为空", 120);
         Map<String, String> validatedCredentials = validateCredentials(type, credentials);
@@ -70,6 +85,10 @@ public final class ChannelAccountApplicationService {
         return accounts.findAll(actor.tenantId());
     }
 
+    public long countAccounts(ActorContext actor) {
+        return accounts.countAll(actor.tenantId());
+    }
+
     public ChannelAccount getAccount(ActorContext actor, UUID accountId) {
         return accounts.findChannelAccountById(actor.tenantId(), accountId)
                 .orElseThrow(() -> new ApplicationException("CHANNEL_ACCOUNT_NOT_FOUND", "渠道账号不存在"));
@@ -85,6 +104,7 @@ public final class ChannelAccountApplicationService {
         ChannelAccount candidate = new ChannelAccount(account.id(), account.tenantId(), account.type(),
                 account.displayName(), account.baseUrl(), account.encryptedCredentials(), account.idempotencyKey(),
                 account.requestHash(), account.credentialFingerprint(), account.version() + 1, status,
+                account.verificationStatus(), account.verificationMessage(), account.lastVerifiedAt(),
                 account.createdBy(), actor.subject(), account.createdAt(), now);
         ChannelAccount saved = accounts.updateIfVersionMatches(candidate, expectedVersion)
                 .orElseThrow(this::accountVersionConflict);
@@ -106,11 +126,54 @@ public final class ChannelAccountApplicationService {
         ChannelAccount candidate = new ChannelAccount(account.id(), account.tenantId(), account.type(),
                 account.displayName(), account.baseUrl(), credentialVault.encrypt(validated), account.idempotencyKey(),
                 account.requestHash(), fingerprint, account.version() + 1, account.status(),
+                null, "凭据已更新，等待重新验证", null,
                 account.createdBy(), actor.subject(), account.createdAt(), now);
         ChannelAccount saved = accounts.updateIfVersionMatches(candidate, expectedVersion)
                 .orElseThrow(this::accountVersionConflict);
         auditRecorder.record(actor, "CHANNEL_CREDENTIALS_ROTATED", "CHANNEL_ACCOUNT", accountId,
                 Map.of("channelType", account.type().name(), "version", Integer.toString(saved.version())));
+        return saved;
+    }
+
+    public ChannelAccount updateAccountProfile(ActorContext actor, UUID accountId, int expectedVersion,
+                                               String displayName, String baseUrl) {
+        ChannelAccount account = getAccount(actor, accountId);
+        requireAccountVersion(account, expectedVersion);
+        String name = requireText(displayName, "渠道账号名称不能为空", 120);
+        String normalizedBaseUrl = endpointPolicy.validateAndNormalize(account.type(), baseUrl);
+        if (account.displayName().equals(name) && java.util.Objects.equals(account.baseUrl(), normalizedBaseUrl)) {
+            return account;
+        }
+        Instant now = clock.instant();
+        String requestHash = accountHash(account.type(), name, normalizedBaseUrl, account.credentialFingerprint());
+        ChannelAccount candidate = new ChannelAccount(account.id(), account.tenantId(), account.type(), name,
+                normalizedBaseUrl, account.encryptedCredentials(), account.idempotencyKey(), requestHash,
+                account.credentialFingerprint(), account.version() + 1, account.status(),
+                account.verificationStatus(), account.verificationMessage(), account.lastVerifiedAt(),
+                account.createdBy(), actor.subject(), account.createdAt(), now);
+        ChannelAccount saved = accounts.updateIfVersionMatches(candidate, expectedVersion)
+                .orElseThrow(this::accountVersionConflict);
+        auditRecorder.record(actor, "CHANNEL_ACCOUNT_UPDATED", "CHANNEL_ACCOUNT", accountId,
+                Map.of("channelType", account.type().name(), "version", Integer.toString(saved.version())));
+        return saved;
+    }
+
+    public ChannelAccount verifyConnection(ActorContext actor, UUID accountId) {
+        ChannelAccount account = getAccount(actor, accountId);
+        ChannelCatalog.ChannelDefinition definition = ChannelCatalog.definition(account.type());
+        if (!definition.existingAccountOperational()) {
+            throw new ApplicationException("CHANNEL_VERIFICATION_UNAVAILABLE", definition.availabilityNote());
+        }
+        ChannelConnectionResult result = connectionVerifier.verify(account,
+                credentialVault.decrypt(account.encryptedCredentials()));
+        Instant checkedAt = clock.instant();
+        ChannelVerificationStatus status = result.succeeded()
+                ? ChannelVerificationStatus.SUCCEEDED : ChannelVerificationStatus.FAILED;
+        ChannelAccount saved = accounts.updateVerification(actor.tenantId(), accountId, status,
+                        result.message(), checkedAt)
+                .orElseThrow(() -> new ApplicationException("CHANNEL_ACCOUNT_NOT_FOUND", "渠道账号不存在"));
+        auditRecorder.record(actor, "CHANNEL_CONNECTION_VERIFIED", "CHANNEL_ACCOUNT", accountId,
+                Map.of("channelType", account.type().name(), "status", status.name()));
         return saved;
     }
 

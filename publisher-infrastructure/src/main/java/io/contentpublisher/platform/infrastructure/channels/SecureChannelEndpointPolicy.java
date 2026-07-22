@@ -24,7 +24,7 @@ public class SecureChannelEndpointPolicy implements ChannelEndpointPolicy {
             case GITHUB_DISCUSSIONS -> "https://api.github.com";
             case X -> "https://api.x.com";
             case REDDIT -> "https://oauth.reddit.com";
-            case HASHNODE -> "https://gql.hashnode.com";
+            case HASHNODE -> "https://gql-beta.hashnode.com/";
             case MEDIUM -> "https://api.medium.com";
             case WORDPRESS, DISCOURSE, MASTODON, GHOST -> null;
             case XIAOHONGSHU, CSDN, JUEJIN, ZHIHU, CNBLOGS, SEGMENTFAULT, V2EX, OSCHINA,
@@ -33,7 +33,8 @@ public class SecureChannelEndpointPolicy implements ChannelEndpointPolicy {
                     throw new ApplicationException("CHANNEL_MANUAL_ONLY", "该渠道不提供平台托管的 API 发布");
         };
         if (fixed != null) {
-            if (baseUrl != null && !baseUrl.isBlank() && !fixed.equals(stripTrailingSlash(baseUrl.trim()))) {
+            if (baseUrl != null && !baseUrl.isBlank()
+                    && !stripTrailingSlash(fixed).equals(stripTrailingSlash(baseUrl.trim()))) {
                 throw new ApplicationException("CHANNEL_ENDPOINT_REJECTED", "该渠道不允许覆盖官方 API 地址");
             }
             return fixed;
