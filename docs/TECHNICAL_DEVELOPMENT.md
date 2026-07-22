@@ -1,263 +1,571 @@
-# Content Publisher 技术开发文档
+# Content Publisher 详细开发设计文档
 
-## 1. 技术目标
+## 1. 文档信息
 
-项目采用模块化单体架构，在保持部署简单的同时，将领域、应用用例和外部技术适配器隔离。当前架构已承载管理工作台、9 个可新接入 API 渠道、Medium 存量适配器和 17 个人工发布渠道，并为任务扩容和更多合规渠道预留稳定边界。
-
-技术原则：
-
-- 领域层不依赖 Spring、JPA、HTTP 或具体 AI SDK。
-- 外部能力通过应用端口接入。
-- 数据库结构只通过 Flyway 演进。
-- 耗时或不稳定的外部调用通过持久化任务执行。
-- 租户身份来自认证上下文，不来自客户端业务参数。
-- AI 和 Git 仓库输入均不被默认信任。
-
-## 2. 技术栈
-
-| 领域 | 技术 |
+| 项目 | 内容 |
 |---|---|
-| 语言 | Java 17 |
-| 应用框架 | Spring Boot 3.5 |
-| Web | Spring MVC、Bean Validation |
-| 安全 | Spring Security、数据库表单登录、OAuth2 Resource Server、JWT |
-| 数据访问 | Spring Data JPA、Hibernate |
-| 数据迁移 | Flyway |
-| 生产数据库 | PostgreSQL |
-| 开发数据库 | 本机 PostgreSQL |
-| 自动化测试数据库 | H2 PostgreSQL Compatibility Mode |
-| Git | Eclipse JGit |
-| AI | Java HttpClient + OpenAI Chat Completions 兼容协议 |
-| 测试 | JUnit 5、AssertJ、Mockito、MockMvc |
-| 运维 | Actuator、Docker、Docker Compose |
+| 文档基线 | 2026-07-22 |
+| 适用版本 | `0.1.0-SNAPSHOT` |
+| 架构形态 | 模块化单体 |
+| 主包名 | `io.contentpublisher.platform` |
+| 构建入口 | 根目录 `pom.xml` |
+| 应用入口 | `publisher-web/src/main/java/io/contentpublisher/platform/PublisherApplication.java` |
 
-## 3. 模块架构
+本文档描述当前代码真实采用的框架、模块、结构组件、依赖方向、数据流、持久化、安全、配置、测试和部署边界。代码、配置、依赖、迁移、Controller、DTO、端口、适配器或测试结构变化时，必须同步更新本文档。
 
-```text
-┌──────────────────────────────────────────────┐
-│ publisher-web                                │
-│ Controller / DTO / Login / JWT / Error       │
-└──────────────────────┬───────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────┐
-│ publisher-infrastructure                     │
-│ JPA / JGit / AI Client / Audit / Job Worker  │
-└──────────────────────┬───────────────────────┘
-                       │ implements ports
-┌──────────────────────▼───────────────────────┐
-│ publisher-application                        │
-│ Use Cases / Ports / Application Errors       │
-└──────────────────────┬───────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────┐
-│ publisher-domain                             │
-│ Project / Article / Job / Policies / States  │
-└──────────────────────────────────────────────┘
-```
+接口字段和错误契约见 [API_REFERENCE.md](API_REFERENCE.md)，完整配置和运维步骤见 [OPERATIONS.md](OPERATIONS.md)，业务规则见 [FUNCTIONAL_SPEC.md](FUNCTIONAL_SPEC.md)。
 
-禁止反向依赖。例如领域层不能导入 `org.springframework.*`，应用层不能直接调用 JPA Repository。
+## 2. 设计目标与约束
 
-## 4. 主要代码入口
+### 2.1 目标
 
-| 能力 | 代码位置 |
+- 以单一可部署进程承载内容生成、审核、发布和监控，降低部署复杂度。
+- 通过领域、应用端口和基础设施适配器隔离外部系统。
+- 使用数据库持久化任务处理 Git、网站、AI 和渠道等长耗时操作。
+- 以认证上下文建立租户边界，不接受客户端指定租户。
+- 对所有外部内容、地址和 AI 输出执行信任边界校验。
+- 保留内容来源、版本、任务、发布和审计事实，支持追溯和恢复。
+
+### 2.2 约束
+
+- Java 固定为 17。
+- 生产数据库为 PostgreSQL。
+- 数据库结构只通过 Flyway 前向迁移。
+- 领域模块不依赖 Spring、JPA、HTTP 或供应商 SDK。
+- 应用模块不直接依赖 JPA Repository、Spring MVC 或具体外部协议。
+- 外部发布结果可能不确定时不自动重试。
+- 密钥只从运行环境进入，加密密文可以落库，明文不能进入日志、响应、任务 Payload 或审计。
+
+## 3. 技术栈
+
+### 3.1 运行与构建
+
+| 技术 | 当前版本/来源 | 用途 |
+|---|---|---|
+| Java | 17 | 语言与运行时 |
+| Spring Boot Parent | 3.5.13 | 依赖管理和应用框架 |
+| Maven | 3.6.3+ | 多模块构建 |
+| Maven Enforcer Plugin | 3.5.0 | 强制 Java 和 Maven 版本 |
+| Spring Boot Maven Plugin | 由 Boot 管理 | 可执行 JAR |
+| Eclipse Temurin | 17 JRE | Docker 运行镜像 |
+
+### 3.2 Web 与安全
+
+| 技术 | 用途 |
 |---|---|
-| 项目查询门面 | `publisher-application/.../ProjectApplicationService.java` |
-| 项目导入 | `publisher-application/.../ProjectImportApplicationService.java` |
-| 内容生成 | `publisher-application/.../ContentGenerationApplicationService.java` |
-| 任务提交用例 | `publisher-application/.../JobApplicationService.java` |
-| 安全 Git 分析 | `publisher-infrastructure/.../git/SecureJGitRepositoryInspector.java` |
-| AI 生成与校验 | `publisher-infrastructure/.../ai/OpenAiCompatibleContentGenerator.java` |
-| JPA 持久化 | `publisher-infrastructure/.../persistence/Jpa*PersistenceAdapter.java` |
-| 持久化任务工作器 | `publisher-infrastructure/.../jobs/DurableJobWorker.java`、`JobHandler.java` |
-| 发布稳定门面 | `publisher-application/.../PublishingApplicationService.java` |
-| 发布子用例 | `ChannelAccountApplicationService`、`ArticleEditorialApplicationService`、`PublicationCommandApplicationService`、`PublicationQueryApplicationService` |
-| 凭据加密 | `publisher-infrastructure/.../channels/AesGcmCredentialVault.java` |
-| 渠道地址安全策略 | `publisher-infrastructure/.../channels/SecureChannelEndpointPolicy.java` |
-| 渠道发布适配器 | `publisher-infrastructure/.../channels/*ChannelPublisher.java` |
-| 登录与 JWT 安全 | `publisher-web/.../security/SecurityConfiguration.java` |
-| 租户身份解析 | `publisher-web/.../security/RequestActorProvider.java` |
-| 项目 API | `publisher-web/.../controller/ProjectController.java` |
-| 任务 API | `publisher-web/.../controller/JobController.java` |
+| Spring MVC | REST 和 Portal Controller |
+| Thymeleaf | 服务端渲染管理后台 |
+| Jakarta Bean Validation | DTO 和表单边界校验 |
+| Spring Security | 权限、Session、CSRF、Bearer Token |
+| OAuth2 Resource Server | OIDC/JWT 验证 |
+| BCrypt | LOCAL 密码哈希，强度 12 |
+| 原生 JavaScript/CSS | Portal 交互和响应式样式，无前端构建链 |
 
-所有 Java 包以 `io.contentpublisher.platform` 开头。
+### 3.3 数据与外部内容
 
-Web 管理入口同样按职责拆分：内容创建、内容库、任务队列、回收站和发布中心分别由独立 Portal Controller 负责。稳定门面只用于保持 API 兼容和协调子用例，不承载新的业务分支。
+| 技术 | 当前版本/来源 | 用途 |
+|---|---|---|
+| Spring Data JPA / Hibernate | Boot 管理 | ORM 和事务 |
+| PostgreSQL Driver | Boot 管理 | 生产数据库连接 |
+| Flyway Core + PostgreSQL | Boot 管理 | V1–V18 迁移 |
+| Eclipse JGit | 7.3.0.202506031305-r | 安全浅克隆和仓库分析 |
+| Jsoup | 1.18.3 | 网站 HTML 文本提取 |
+| CommonMark | 0.24.0 | Markdown 解析与安全渲染 |
+| Jackson Databind | Boot 管理 | JSON、任务 Payload 和外部协议 |
+| Java HttpClient | JDK 17 | AI、网站和渠道 HTTP 调用 |
 
-## 5. 领域模型
+### 3.4 测试与运维
 
-### 5.1 Project
+| 技术 | 用途 |
+|---|---|
+| JUnit 5 | 测试运行 |
+| AssertJ | 断言 |
+| Mockito | 外部端口替身 |
+| MockMvc / Spring Security Test | REST、安全和 CSRF |
+| H2 PostgreSQL Compatibility Mode | 自动化集成测试数据库 |
+| Spring Boot Actuator | health、info、metrics、prometheus |
+| Docker / Compose | 容器构建与双服务模板 |
+| systemd | 原生 JAR 服务模板 |
 
-关键字段：
-
-- `id`：全局 UUID。
-- `tenantId`：租户边界。
-- `gitUrl`：规范化 Git 地址。
-- `defaultBranch`、`revision`：分析版本。
-- `languages`、`license`：仓库技术信息。
-- `status`：`ANALYZING`、`READY`、`FAILED`。
-- `createdBy`、`updatedBy`：操作者追踪。
-
-租户内 `gitUrl` 唯一，不同租户可以使用相同地址。
-
-### 5.2 RepositorySnapshot
-
-保存生成文章所需的有限仓库事实：README、Manifest 摘要、文件树、语言、License、分支和 Commit。它不是完整代码仓库镜像。
-
-### 5.3 Article
-
-关键字段：
-
-- `projectId`：所属项目。
-- `generationJobId`：生成任务，唯一，用于重试幂等。
-- `title`、`summary`、`markdown`、`keywords`。
-- `sourceRevision`：内容对应的 Git Commit。
-- `currentVersion`：当前内容版本号，用于乐观并发控制。
-- `status`：`DRAFT`、`APPROVED`、`REJECTED`、`PUBLISHED`。
-
-### 5.4 ArticleVersion
-
-以 `(articleId, versionNumber)` 为主键保存标题、摘要、Markdown、关键词、操作者和创建时间。版本只新增不覆盖，文章创建时生成 V1；后续编辑必须匹配 `expectedVersion`，并在同一事务内更新文章和写入新版本。
-
-### 5.5 GenerationPolicy
-
-构造时执行基础约束：
-
-- 最小长度不少于 200。
-- 最大长度不超过 20000。
-- 关键词上限 1–30。
-- 必选关键词数量不能超过总上限。
-- 同一关键词不能同时为必选和禁用。
-
-### 5.6 ChannelAccount
-
-保存渠道类型、展示名称、规范化 API 地址、启停状态、连接验证状态、账号版本、加密凭据和 HMAC 指纹。验证结果包含成功/失败、有限说明和最近检查时间；凭据轮换后旧验证结果会被清除。凭据密文及指纹不进入任何 Web Response。账号创建保存幂等键与请求哈希，同租户重复请求返回原账号；资料修改、启停、人工凭据轮换和 OAuth 自动刷新均使用数据库版本条件更新，避免并发覆盖。
-
-### 5.7 Publication
-
-发布记录通过 `publicationJobId` 与任务一一对应，保存文章、渠道账号、渠道类型、可选 `canonicalUrl`、外部 ID、外部 URL、发布状态和有限错误信息。
-
-### 5.8 Job
-
-任务 Payload 使用封闭接口：
-
-- `JobPayload.ImportProject`
-- `JobPayload.GenerateArticle`
-- `JobPayload.GenerateTopicArticle`
-- `JobPayload.GenerateWebsiteArticle`
-- `JobPayload.PublishArticle`
-
-Job 保存租户、原操作者、类型、状态、请求哈希、尝试次数、调度时间、租约、结果 ID 和有限错误信息。
-
-## 6. 请求处理流程
-
-### 6.1 Git 导入
+## 4. 系统上下文
 
 ```text
-Client
-  → JWT 认证和角色校验
-  → RequestActorProvider 提取 tenant_id/sub
-  → 校验 Idempotency-Key 和安全 URL
-  → 串行化事务检查租户配额
-  → 保存 PENDING Job
-  → 返回 202 + Location
+用户 / API 客户端
+        │
+        ▼
+Spring MVC + Spring Security
+        │ ActorContext(tenantId, subject, roles)
+        ▼
+应用服务与领域规则
+        │
+        ├── PostgreSQL / Flyway / JPA
+        ├── Git HTTPS / JGit
+        ├── 公开网站 / Java HttpClient + Jsoup
+        ├── OpenAI 兼容 AI / Java HttpClient
+        └── 官方发布渠道 / 独立 ChannelPublisher
 
-Worker
-  → 数据库悲观锁领取 Job
-  → JGit 浅克隆到 /data/tmp/content-publisher
-  → 仓库限制检查和事实提取
-  → 保存 Project + RepositorySnapshot
-  → Job 标记 SUCCEEDED 并保存 Project ID
-  → 写业务审计
+后台 DurableJobWorker 从 PostgreSQL 领取任务并调用上述外部适配器。
 ```
 
-### 6.2 文章生成
+系统没有消息队列。`jobs` 表同时承担队列、调度、租约、进度、结果和失败事实。
+
+## 5. 模块架构
+
+### 5.1 模块依赖
 
 ```text
-Client
-  → 校验租户内 Project 存在且 READY
-  → 保存 GENERATE_ARTICLE Job
-  → 返回 202
-
-Worker
-  → 读取 RepositorySnapshot
-  → 构建系统提示词、约束和不可信仓库边界
-  → 确定主关键词、候选关键词、搜索意图和目标受众
-  → 调用 OpenAI 兼容接口
-  → 解析 JSON
-  → 收紧中英文摘要和英文轻微超限正文
-  → 执行长度/关键词前置/SEO 标题/H2 层级/章节/禁用词校验
-  → 按 generation_job_id 幂等保存 DRAFT Article
-  → Job 标记 SUCCEEDED 并保存 Article ID
+publisher-web ───────────────┐
+                            ▼
+publisher-infrastructure → publisher-application → publisher-domain
 ```
 
-SEO 规则由服务端统一注入 Git 项目、主题教程和网站推荐三条生成链路。模型负责按搜索意图生成自然内容，服务端负责确定性质量门禁；任何 SEO 指令都不能覆盖事实边界、提示词注入防护和正文长度限制。文章详情通过 `ArticleSeoView` 动态计算审核辅助分，不新增冗余持久化字段，编辑新版本后分数会立即重新计算。
+| 模块 | 输入 | 输出 | 失败模型 |
+|---|---|---|---|
+| `publisher-domain` | 构造参数和领域值 | 不可变领域对象、状态和策略 | `IllegalArgumentException` 表示领域输入不合法 |
+| `publisher-application` | `ActorContext`、领域命令、端口 | 业务结果或稳定错误码 | `ApplicationException` |
+| `publisher-infrastructure` | 应用端口调用、配置 | JPA、HTTP、JGit、加密和任务执行 | 外部错误转换为 `ApplicationException` |
+| `publisher-web` | HTTP、Session/JWT、表单 | JSON、HTML、状态码 | 统一 API/Portal 错误处理 |
 
-### 6.3 审核与渠道发布
+### 5.2 边界约束
+
+- Domain 不导入 `org.springframework.*`、`jakarta.persistence.*` 或 HTTP 类型。
+- Application 只依赖 Domain 和自己的 Port。
+- Infrastructure 实现 Port，并通过 Spring Configuration 装配应用服务。
+- Web 负责协议转换、身份上下文和参数校验，不直接实现业务事务。
+- `ArchitectureBoundaryTest` 对模块和包依赖执行自动检查。
+
+## 6. 领域组件
+
+### 6.1 身份与租户
+
+| 类型 | 职责 |
+|---|---|
+| `ActorContext` | 保存 `tenantId`、`subject` 和角色；所有应用用例的身份输入 |
+
+### 6.2 内容来源与文章
+
+| 类型 | 职责 |
+|---|---|
+| `ArticleSourceType` | `GIT`、`TOPIC`、`WEBSITE` |
+| `ContentOrigin` | 统一来源对象；校验 Git 必须有项目、非 Git 不得有项目、网站必须有 URL |
+| `TopicBrief` | 主题、说明、受众、文章类型、知识级别、关键词和参考说明 |
+| `WebsiteBrief` | 网站 URL、推荐角度、受众和关键词 |
+| `WebsiteSnapshot` | 规范化 URL、标题和有限正文事实 |
+| `RepositorySnapshot` | README、Manifest、文件树、语言、License、分支和 Commit |
+| `GenerationPolicy` | 语言、语气、200–3000 正文范围、关键词和章节约束 |
+| `Article` | 当前中英文主稿、来源、标签、关键词、状态、版本和审计字段 |
+| `ArticleVersion` | 不可变中英文内容版本 |
+| `ArticleStatus` | `DRAFT`、`APPROVED`、`PUBLISHED`、`REJECTED` |
+
+`Article.projectId()` 是从 `ContentOrigin` 派生的兼容访问器。只有 Git 来源具有项目 ID。
+
+### 6.3 项目
+
+| 类型 | 职责 |
+|---|---|
+| `Project` | Git URL、名称、描述、分支、Commit、语言、License 和状态 |
+| `ProjectStatus` | `ANALYZING`、`READY`、`FAILED` |
+
+### 6.4 任务
+
+| 类型 | 职责 |
+|---|---|
+| `JobType` | 5 类任务 |
+| `JobStatus` | 6 个状态，并定义活动状态判断 |
+| `JobPayload` | 封闭 Payload：导入、Git/主题/网站生成、发布 |
+| `Job` | 幂等键、请求哈希、尝试、进度、批次、计划时间、租约、结果和错误 |
+
+### 6.5 渠道与发布
+
+| 类型 | 职责 |
+|---|---|
+| `ChannelType` | 10 个 API 渠道定义加 17 个人工渠道 |
+| `ChannelAccount` | API 账号元数据、加密凭据、版本和验证结果 |
+| `ChannelAccountStatus` | `ACTIVE`、`DISABLED` |
+| `ChannelVerificationStatus` | `SUCCEEDED`、`FAILED` |
+| `ContentFormat` | `MARKDOWN`、`PLAIN_TEXT`、`SHORT_TEXT` |
+| `AdaptedContent` | 渠道派生标题、正文、标签和格式 |
+| `Publication` | API 发布事实 |
+| `PublicationStatus` | `PUBLISHING`、`PUBLISHED`、`FAILED` |
+| `ManualPublication` | 人工发布最终内容快照与外链 |
+
+## 7. 应用组件
+
+### 7.1 应用服务
+
+| 组件 | 职责 |
+|---|---|
+| `ProjectImportApplicationService` | 创建/更新项目、调用仓库检查器、保存快照和审计 |
+| `ContentGenerationApplicationService` | Git、主题、网站三类内容生成与文章幂等保存 |
+| `ProjectApplicationService` | 项目查询和兼容门面 |
+| `JobApplicationService` | 任务提交、幂等、配额、批次、调度、取消和发布重试 |
+| `ArticleEditorialApplicationService` | 编辑、版本、审核、驳回和历史版本恢复 |
+| `AiSettingsApplicationService` | 租户 AI 设置、地址校验、API Key 加密和版本控制 |
+| `ChannelAccountApplicationService` | 渠道账号创建、修改、启停、验证和凭据轮换 |
+| `PublicationCommandApplicationService` | 预检、API 发布、人工发布、凭据自动刷新和结果保存 |
+| `PublicationQueryApplicationService` | API/人工发布统一查询、分页和安全视图 |
+| `PublishingApplicationService` | 保持发布用例的稳定聚合门面 |
+| `RecordManagementApplicationService` | 文章/任务软删除、级联隐藏和恢复 |
+| `MonitoringApplicationService` | 生成租户监控时间窗口快照 |
+| `PlatformContentAdapter` | 按 `ChannelCatalog` 生成确定性派生内容 |
+
+### 7.2 应用值对象
+
+- `PagedResult`：分页结果。
+- `DeletedRecord`：回收站摘要。
+- `PublicationPreflightResult`：预检结果。
+- `PublicationRecord`：API/人工统一只读记录。
+- `PublicationMethod`：`API` 或 `MANUAL`。
+- `MonitoringWindow`、`MonitoringSnapshot`：监控窗口和统计快照。
+- `ChannelConnectionResult`、`ChannelCredentialRefreshResult`：外部连接与刷新结果。
+
+### 7.3 端口
+
+| 端口组 | 接口 |
+|---|---|
+| 项目与内容 | `ProjectRepository`、`RepositorySnapshotStore`、`RepositoryInspector`、`ArticleRepository` |
+| AI 与网站 | `ContentGenerator`、`WebsiteInspector`、`AiProviderSettingsRepository`、`AiEndpointPolicy` |
+| 任务与审计 | `JobRepository`、`JobProgressReporter`、`AuditRecorder`、`MonitoringQuery` |
+| 发布 | `ChannelAccountRepository`、`PublicationRepository`、`ManualPublicationRepository`、`ChannelPublisher` |
+| 渠道安全 | `CredentialVault`、`ChannelEndpointPolicy`、`ChannelConnectionVerifier`、`ChannelCredentialRefresher` |
+| 通用安全与渲染 | `SecretCipher`、`MarkdownRenderer` |
+
+端口方法必须显式接收租户 ID，或由输入领域对象携带租户。外部协议类型不能穿过端口进入核心业务。
+
+### 7.4 渠道目录
+
+`ChannelCatalog` 是 27 个渠道定义的单一来源，保存：
+
+- 展示名称和区域。
+- 是否支持 API。
+- 内容格式和字符上限。
+- 官方编辑入口。
+- 发布结果允许域名。
+- 凭据字段和表单标签。
+- 自动化可用状态、说明和申请文档。
+
+后端校验、Portal 表单和内容适配都读取该目录，避免重复维护渠道规则。
+
+## 8. 基础设施组件
+
+### 8.1 配置与装配
+
+`InfrastructureConfiguration`：
+
+- 注册 Git、AI、网站、任务、秘密和渠道配置。
+- 创建 UTC `Clock`。
+- 创建三个独立 Java HttpClient。
+- 装配所有应用服务、端口实现和 Publisher 列表。
+- 启用 Spring Scheduling。
+
+配置对象：
+
+- `GitImportProperties`
+- `WebsiteImportProperties`
+- `AiProperties`
+- `AiEndpointSecurityProperties`
+- `SecretProperties`
+- `JobProperties`
+- `ChannelProperties`
+
+### 8.2 Git
+
+`SecureJGitRepositoryInspector` 实现 `RepositoryInspector`：
+
+- 规范化和校验 HTTPS URL。
+- 主机允许列表与 DNS 公网地址检查。
+- 深度 1 浅克隆。
+- 超时、仓库总大小、文件数、README 和文件树限制。
+- 提取 Manifest、语言、License、分支和 Commit。
+- `finally` 清理临时目录。
+
+### 8.3 网站
+
+`SecureWebsiteInspector` 实现 `WebsiteInspector`：
+
+- URL 信任边界校验。
+- Java HttpClient 禁止自动重定向。
+- 响应体大小限制。
+- Jsoup 提取标题和可见文本。
+- 文本最小/最大字符检查。
+- 外部异常转换为稳定网站错误码。
+
+### 8.4 AI
+
+`SecureAiEndpointPolicy`：
+
+- 要求 HTTPS；只有服务器显式允许时可以使用受控私网地址。
+- 拒绝 UserInfo、Query、Fragment、危险 DNS 和非允许主机。
+
+`OpenAiCompatibleContentGenerator`：
+
+- 读取租户设置或环境默认设置。
+- 请求 `{baseUrl}/chat/completions`。
+- 使用 JSON response format、system/user messages、模型和温度。
+- 给 Git、主题、网站分别构造不可信事实边界。
+- 解析中英文 JSON 并执行长度、关键词、章节、SEO 和元叙述校验。
+- 限制 AI 响应体为 2 MiB。
+
+### 8.5 凭据与秘密
+
+| 组件 | 用途 |
+|---|---|
+| `AesGcmSecretCipher` | 租户级 AI API Key；AAD 包含租户上下文 |
+| `AesGcmCredentialVault` | 渠道凭据 JSON；AAD 包含租户和账号上下文 |
+
+共同属性：
+
+- Base64 32 字节主密钥。
+- AES/GCM/NoPadding。
+- 每次加密独立 96 位 IV。
+- 128 位认证标签。
+- `v1:` 密文协议前缀。
+- HMAC-SHA256 指纹用于重复检测。
+
+主密钥轮换当前未实现。直接替换会使历史密文不可解密。
+
+### 8.6 渠道
+
+发布适配器：
+
+- `DevChannelPublisher`
+- `WordPressChannelPublisher`
+- `DiscourseChannelPublisher`
+- `GitHubDiscussionsChannelPublisher`
+- `XChannelPublisher`
+- `RedditChannelPublisher`
+- `HashnodeChannelPublisher`
+- `MediumChannelPublisher`
+- `MastodonChannelPublisher`
+- `GhostChannelPublisher`
+
+`AbstractHttpChannelPublisher` 提供共同 HTTP、超时、响应和错误映射。每个 Publisher 声明唯一 `ChannelType`；应用服务启动时拒绝重复类型。
+
+`OfficialChannelConnectionVerifier` 执行连接测试。`OfficialChannelCredentialRefresher` 为 X/Reddit 刷新 Access Token，并通过账号版本条件保存新凭据。
+
+### 8.7 持久化
+
+JPA Entity：
+
+- `ProjectEntity`、`SnapshotEntity`
+- `ArticleEntity`、`ArticleVersionEntity`
+- `JobEntity`
+- `ChannelAccountEntity`
+- `PublicationEntity`、`ManualPublicationEntity`
+- `AiProviderSettingsEntity`
+- `AuditLogEntity`
+
+Adapter：
+
+- `JpaProjectPersistenceAdapter`
+- `JpaArticlePersistenceAdapter`
+- `JpaJobPersistenceAdapter`
+- `JpaPublishingPersistenceAdapter`
+- `JpaAiProviderSettingsPersistenceAdapter`
+- `JpaAuditRecorder`
+- `JdbcMonitoringQuery`
+
+`JpaDomainMapper` 负责 Entity 与 Domain 转换。`PublisherJpaRepositories` 集中声明 Spring Data Repository。
+
+### 8.8 任务工作器
+
+| Handler | JobType |
+|---|---|
+| `ImportProjectJobHandler` | `IMPORT_PROJECT` |
+| `GenerateProjectArticleJobHandler` | `GENERATE_ARTICLE` |
+| `GenerateTopicArticleJobHandler` | `GENERATE_TOPIC_ARTICLE` |
+| `GenerateWebsiteArticleJobHandler` | `GENERATE_WEBSITE_ARTICLE` |
+| `PublishArticleJobHandler` | `PUBLISH_ARTICLE` |
+
+`DurableJobWorker` 构建 `JobType → JobHandler` 映射，轮询领取任务、汇报进度、处理成功/重试/失败和审计。
+
+### 8.9 Markdown
+
+`SafeMarkdownRenderer` 使用 CommonMark 解析 Markdown，并输出用于 Portal 预览的受控 HTML。REST 预览请求最多 20000 字符。
+
+## 9. Web 组件
+
+### 9.1 API Controller
+
+| Controller | 基础路径 | 操作数 |
+|---|---|---:|
+| `ProjectController` | `/api/v1/projects` | 3 |
+| `ArticleController` | `/api/v1/articles` | 11 |
+| `ChannelAccountController` | `/api/v1/channel-accounts` | 7 |
+| `JobController` | `/api/v1/jobs` | 5 |
+| `PublicationController` | `/api/v1/publications` | 3 |
+| `MarkdownPreviewController` | `/api/v1/markdown` | 1 |
+| `MonitoringController` | `/api/v1/monitoring` | 1 |
+
+共 31 个当前业务 REST 操作。完整清单见 `API_REFERENCE.md`。
+
+### 9.2 Portal Controller
+
+| Controller | 职责 |
+|---|---|
+| `PortalController` | 登录、工作台、权限错误 |
+| `ContentCreationPortalController` | Git、主题、网站内容创建 |
+| `ContentLibraryPortalController` | 内容库、编辑、版本、审核 |
+| `PortalPublishingController` | 发布中心、渠道、API/人工发布和失败重试 |
+| `JobPortalController` | 任务列表、详情和取消 |
+| `PortalMonitoringController` | 监控大屏与局部刷新 |
+| `RecycleBinPortalController` | 软删除和恢复 |
+| `PortalAiSettingsController` | 租户 AI 设置 |
+| `PasswordController` | LOCAL 改密 |
+
+`PortalModelAdvice` 注入当前用户、租户、角色和导航状态。`PortalFormSupport` 统一表单错误处理，`PortalLabels` 统一中文标签。
+
+### 9.3 DTO 与表单
+
+- REST Request 使用 Bean Validation。
+- REST Response 显式挑选安全字段，不直接序列化 JPA Entity。
+- Portal Form 与 REST DTO 分离，避免 HTML 字段和 API 契约相互污染。
+- `ArticleResponse` 统一输出三类来源。
+- `JobResponse` 根据任务类型计算结果资源类型。
+- `PublicationRecordResponse` 不包含人工正文快照和凭据。
+
+### 9.4 错误
+
+Security EntryPoint、AccessDeniedHandler 和强制改密 Filter 使用最小安全错误体，只返回状态、错误码和说明；应用/校验错误使用完整 `ApiError`。
+
+- `GlobalExceptionHandler` 把稳定业务错误码映射到 HTTP。
+- `PortalExceptionHandler` 把用户可见错误映射为页面。
+- `RequestTraceFilter` 为请求写入 Trace ID。
+- 参数校验返回字段错误列表。
+- 数据库并发冲突返回 `CONCURRENT_REQUEST_CONFLICT`，不暴露 SQL。
+
+## 10. 关键流程
+
+### 10.1 身份解析
 
 ```text
-Admin
-  → 创建渠道账号
-  → 校验 Idempotency-Key、凭据字段和站点地址
-  → AES-256-GCM 加密凭据并保存
-  → 后续通过 expectedVersion 原子启停账号或轮换凭据
-  → 审核文章为 APPROVED
-
-Editor/Admin
-  → 执行文章、账号、连接、地址、凭据和英文稿发布预检
-  → 提交立即或带 UTC scheduledAt 的 PUBLISH_ARTICLE Job
-  → 到达计划时间前保持 PENDING，不被工作器领取
-  → Worker 创建 PUBLISHING Publication
-  → 发布前重新校验动态站点地址
-  → X/Reddit 先刷新 Access Token，并以乐观版本控制保存轮换凭据
-  → 解密当前凭据并调用匹配的官方 API Adapter
-  → 保存外部 ID、URL 和 PUBLISHED 状态
-  → Article 标记 PUBLISHED，Job 标记 SUCCEEDED
+HTTP 请求
+  → SecurityFilterChain 认证与角色匹配
+  → RequestActorProvider
+  → ActorContext(tenantId, subject, roles)
+  → Controller 调用应用服务
+  → Repository 查询附加 tenantId
 ```
 
-发布调用默认不自动重试。外部 API 普遍缺少统一幂等协议，网络中断时结果可能不确定；盲目重试会造成重复内容。失败记录保留供后续管理员核对和重放功能使用。
+### 10.2 Git 导入
 
-`PENDING` 或 `RETRY_WAIT` 且 `lock_owner` 为空的任务可以通过条件更新原子取消为 `CANCELLED`。应用层在更新前后都校验状态，避免与工作器领取并发时产生误报；`RUNNING` 和终态任务拒绝取消。
+```text
+POST imports
+  → DTO + 幂等键校验
+  → JobApplicationService 创建 PENDING
+  → Worker 领取并设置 RUNNING/租约
+  → SecureJGitRepositoryInspector
+  → Project + RepositorySnapshot
+  → Job SUCCEEDED，resultResourceId=projectId
+```
 
-### 6.4 平台内容适配与人工发布
+项目导入失败时项目标记 `FAILED`；Git 临时故障按任务策略退避。
 
-`PlatformContentAdapter` 是纯应用层组件，根据 `ChannelCatalog` 将文章主稿转换为 `AdaptedContent`。输出包含渠道类型、内容格式、标题、正文、标签和字符上限。所有 API Publisher 接收同一个 `AdaptedContent`，Web 人工发布工作区也调用同一组件，保证页面预览与实际发布规则一致。
+### 10.3 三类文章生成
 
-`ChannelCatalog` 维护平台展示名称、API 支持状态、内容格式、字符限制、官方编辑入口、允许的发布结果域名以及 API 凭据字段和表单标签。后端校验、Portal 表单和前端显示均读取这一份定义。无稳定 API 的渠道不创建 `channel_accounts`，因此不保存第三方登录凭据。
+```text
+Git Project / TopicBrief / WebsiteBrief
+  → 创建对应 GENERATE_* Job
+  → Handler 获取有限事实
+  → ContentGenerator 调用 AI
+  → 解析和确定性校验
+  → 按 generation_job_id 幂等保存 Article + Version 1
+  → Job SUCCEEDED，resultResourceId=articleId
+```
 
-人工发布通过 `manual_publications` 保存最终标题、正文、格式、外部 URL、操作人和时间。保存前校验文章状态、渠道内容格式、字符限制、HTTPS 以及结果 URL 的平台域名。
+网站流程先调用 `WebsiteInspector`，Git 流程读取 `RepositorySnapshot`，主题流程只使用结构化 Brief。
 
-`PublicationRecord` 是应用层统一只读模型。`PublicationQueryApplicationService` 分别从 `PublicationRepository.findRecentApi` 与 `ManualPublicationRepository.findRecent` 读取租户内记录，补充安全的账号展示名称与内容格式后合并排序。该设计不修改两张事实表，也不会把渠道密文凭据或人工正文快照暴露给页面/API。
+### 10.4 编辑与审核
 
-`/publishing` 拆分为待发布、执行批次、发布记录和覆盖分析。发布记录使用数据库筛选和准确总数；跨 `publications`、`manual_publications` 的页面分别查询前 N 条后统一按时间排序切页，页面最多访问第 100 页。执行批次存在活跃任务时由页面每 5 秒获取当前 HTML，并只替换批次、摘要和标签计数区域。`GET /api/v1/publications` 提供同一安全视图，单条 API 发布详情接口 `/api/v1/publications/{publicationId}` 保持兼容。
+```text
+PUT Article(expectedVersion)
+  → 租户和状态检查
+  → 条件更新 currentVersion
+  → 同事务插入 ArticleVersion
+  → 审计
 
-## 7. 持久化任务设计
+Admin approve/reject
+  → 状态机检查
+  → 更新状态
+  → 审计
+```
 
-### 7.1 为什么不使用简单 `@Async`
+### 10.5 API 发布
 
-内存异步任务在进程重启时会丢失，无法查询，也无法在多实例间协调。当前实现将任务、调度时间、租约和结果全部持久化到数据库。
+```text
+发布请求
+  → canonical/scheduledAt 校验
+  → assertPublishable 预检
+  → PUBLISH_ARTICLE Job
+  → 到期后 Worker 领取
+  → 创建 PUBLISHING Publication
+  → 重新校验地址与账号
+  → X/Reddit 可选刷新凭据
+  → PlatformContentAdapter
+  → ChannelPublisher
+  → Publication PUBLISHED/FAILED
+  → Article PUBLISHED（成功时）
+```
 
-### 7.2 领取算法
+外部结果不确定时不自动重试。人工重试创建新 Job 和新 Publication，不覆盖原失败记录。
 
-工作器按 `scheduled_at` 和 `created_at` 领取最早任务：
+### 10.6 人工发布
 
-1. 在事务中执行带 `PESSIMISTIC_WRITE` 的候选查询。
-2. 候选状态为到期的 `PENDING`、`RETRY_WAIT`，或租约过期的 `RUNNING`。
-3. 设置 `RUNNING`、`lock_owner`、`locked_at`，并增加 `attempt`。
-4. 提交领取事务后执行外部调用，避免长时间持有数据库锁。
-5. 完成更新必须匹配任务 ID、`RUNNING` 状态和当前 `lock_owner`。
+```text
+文章 + ChannelType
+  → PlatformContentAdapter
+  → Portal 显示派生内容
+  → 用户复制并打开官方页面
+  → 回填外部 HTTPS URL
+  → 渠道域名校验
+  → ManualPublication 快照 + 审计
+```
 
-`DurableJobWorker` 不再维护任务类型 `switch`。每种任务通过独立 `JobHandler` 注册，启动时构建 `JobType → JobHandler` 映射并拒绝重复注册；新增任务类型时同时新增 Payload、Handler 和测试即可。
+### 10.7 软删除与恢复
 
-多实例会在数据库层竞争同一任务，不依赖单机内存锁。
+```text
+Admin 删除文章
+  → 检查关联活动任务
+  → articles.deleted_at/deleted_by
+  → 关联 jobs/publications/manual_publications 同时隐藏
 
-### 7.3 租约恢复
+恢复文章
+  → 恢复文章
+  → 恢复关联任务和发布事实
+```
 
-- 默认租约超时 5 分钟。
-- 工作器崩溃后，其他实例可重新领取过期任务。
-- 如果过期任务已达到最大尝试次数，领取前自动标记为 `FAILED/WORKER_LEASE_EXPIRED`。
-- Git 和 AI 自身超时必须小于租约超时，避免正常执行被重复领取。
+删除生成任务时，如果已有生成文章，则委托整条文章记录级联删除。
 
-### 7.4 重试
+### 10.8 监控
+
+`JdbcMonitoringQuery` 使用租户 ID 和时间窗口执行聚合查询。`MonitoringApplicationService` 用 UTC Clock 计算窗口边界，返回不可变 `MonitoringSnapshot`。
+
+## 11. 持久化任务设计
+
+### 11.1 为什么使用数据库队列
+
+内存异步任务无法在重启后查询和恢复，也不能安全协调多实例。`jobs` 表保存完整任务状态，并作为并发协调点。
+
+### 11.2 领取
+
+1. 查询到期的 `PENDING`、`RETRY_WAIT` 或租约过期 `RUNNING`。
+2. 在事务中使用悲观锁选择候选。
+3. 设置 `RUNNING`、`lock_owner`、`locked_at` 并增加尝试次数。
+4. 提交领取事务后调用外部系统。
+5. 完成更新必须匹配任务状态和当前 owner。
+
+### 11.3 进度
+
+任务保存 0–100 的百分比、最长 100 的标签和最长 500 的详情。Handler 通过 `JobProgressReporter` 更新，Web 根据任务类型和状态生成安全显示。
+
+### 11.4 调度
+
+- `scheduled_at` 是可领取时间。
+- 立即任务使用当前 UTC。
+- 发布最远允许一年。
+- Worker 按 `scheduled_at` 和 `created_at` 领取。
+
+### 11.5 重试
 
 当前可重试错误：
 
@@ -267,416 +575,348 @@ Editor/Admin
 - `WEBSITE_FETCH_FAILED`
 - `WEBSITE_FETCH_INTERRUPTED`
 
-退避公式：
-
 ```text
-delay = min(initialRetryDelay × 2^(attempt-1), maxRetryDelay)
+delay = min(initialRetryDelay × 2^(attempt - 1), maxRetryDelay)
 ```
 
-默认初始延迟 10 秒、最大延迟 5 分钟、最多 4 次执行。
+默认首次 10 秒、最大 5 分钟、最多 4 次。发布调用不在自动重试集合。
 
-### 7.5 幂等
+### 11.6 幂等与一致性
 
-API 幂等由 `(tenant_id, idempotency_key)` 数据库唯一约束保证。应用同时保存请求 SHA-256 哈希，用于区分“相同键相同请求”和“相同键不同请求”。
+- `jobs(tenant_id, idempotency_key)` 唯一。
+- 保存 SHA-256 请求哈希识别同键不同请求。
+- 任务创建与租户活动数量检查使用串行化事务。
+- `articles(generation_job_id)` 防止重复草稿。
+- `publications(publication_job_id)` 防止同任务重复发布事实。
+- 批量发布预检全部账号后再原子创建子任务。
 
-文章生成在资源层再增加 `generation_job_id` 唯一约束，覆盖“文章已保存但任务完成状态未提交”的故障窗口。
+## 12. 数据库设计
 
-### 7.6 配额一致性
+### 12.1 表
 
-活跃任务计数和任务创建使用 `SERIALIZABLE` 事务隔离。数据库唯一约束作为并发幂等的最终保护；并发写冲突返回稳定的 409，不向客户端暴露 SQL 信息。
-
-## 8. Git 安全
-
-### 8.1 SSRF 防护
-
-- 仅允许 HTTPS。
-- 主机必须位于 `GIT_ALLOWED_HOSTS`。
-- DNS 解析后拒绝回环、私网、链路本地和组播地址。
-- URL 不允许 UserInfo、Query 或 Fragment。
-- SSH 和本地文件协议默认禁止。
-
-### 8.2 资源限制
-
-- `setDepth(1)` 浅克隆。
-- 禁止子模块自动克隆。
-- 克隆超时默认 30 秒。
-- 默认最大仓库 100 MiB。
-- 默认最大文件数 2000。
-- README 和 Manifest 按字符数截断。
-- 文件树限制深度与返回数量。
-
-临时目录位于 `/data/tmp/content-publisher`，任务结束在 `finally` 中递归清理。
-
-## 9. AI 安全与输出控制
-
-### 9.1 服务协议
-
-请求发送至：
-
-```text
-{PUBLISHER_AI_BASE_URL}/chat/completions
-```
-
-请求使用模型名、温度、JSON response format 和 system/user messages。API Key 只进入 Authorization Header，不写数据库和日志。
-
-### 9.2 输入隔离
-
-仓库内容以 `<repository>...</repository>` 边界传给模型。系统提示词明确声明仓库内容不可信，禁止接受其中的指令。
-
-### 9.3 输出校验
-
-模型输出即使是合法 JSON，也必须经过服务端规则校验。业务正确性不能依赖模型“自觉遵守”提示词。
-
-### 9.4 模型切换
-
-只要服务兼容 Chat Completions 协议，即可通过环境变量切换自建模型、AI 网关或第三方供应商。模型差异不得渗透到领域层。
-
-### 9.5 渠道凭据安全
-
-- 主密钥由 `PUBLISHER_CHANNELS_ENCRYPTION_KEY` 注入，格式为 Base64 编码的 32 字节随机值。
-- 每次加密生成独立 96 位随机 IV，使用 AES/GCM/NoPadding 和 128 位认证标签。
-- 密文带 `v1:` 格式前缀，为后续密钥版本与轮换预留协议空间。
-- 渠道凭据仅在工作器调用官方 API 前解密，不进入任务 Payload、API Response、审计详情或日志。
-- 规范化凭据通过 HMAC-SHA256 生成不可逆指纹，用于识别重复轮换，不把明文哈希暴露给离线猜测。
-- 渠道 Token/API Key 支持在线轮换；更新语句包含 `account_version = expectedVersion` 条件，只有一个并发请求可以成功。
-- Twitter/X 和 Reddit 由 `OfficialChannelCredentialRefresher` 在发布调用前使用 OAuth Refresh Token 获取新 Access Token。返回新 Refresh Token 时一并轮换；账号以新版本重新加密保存并记录不含秘密正文的审计事件。
-- 并发刷新保存失败后重新读取账号：若指纹已变化，使用另一请求已经保存的新凭据继续发布；连续版本冲突才返回稳定错误。
-- 当前在线轮换不等于主密钥轮换。生产环境仍不能直接替换 `PUBLISHER_CHANNELS_ENCRYPTION_KEY`，否则历史账号无法解密。
-
-### 9.6 渠道地址安全
-
-DEV、GitHub Discussions、Twitter/X、Reddit、Hashnode 与 Medium 使用固定官方地址，其中 Hashnode 为 `https://gql-beta.hashnode.com/`。WordPress、Discourse、Mastodon 与 Ghost 接受租户站点地址，但必须满足 HTTPS、无 UserInfo/Query/Fragment、主机允许列表和公网 DNS 地址校验。动态地址在账号创建、连接测试、发布预检和实际发布前都会校验；生产网络仍应配置出站访问控制，降低 DNS 重绑定和依赖库缺陷造成的风险。
-
-## 10. 身份与权限
-
-### 10.1 JWT Claim
-
-生产 Token 至少包含：
-
-```json
-{
-  "sub": "user-123",
-  "tenant_id": "tenant-a",
-  "roles": ["EDITOR"]
-}
-```
-
-Claim 名可以通过环境变量调整。
-
-### 10.2 安全规则
-
-- Health 和 Info 可匿名访问。
-- 项目与任务 GET：Viewer、Editor、Admin。
-- 项目导入和文章生成 POST：Editor、Admin。
-- 文章和发布结果 GET：Viewer、Editor、Admin。
-- 发布任务 POST：Editor、Admin，但文章必须已审核。
-- 渠道账号 GET：Editor、Admin；账号创建、启停、凭据轮换和文章审核：仅 Admin。
-- 其他 Actuator 端点：Admin。
-- Session、Form Login、HTTP Basic、Logout 和 Request Cache 被关闭。
-- API 使用无状态 Bearer Token。
-
-### 10.3 租户隔离
-
-Controller 不接受 `tenantId` 参数。应用服务把 `ActorContext.tenantId` 传给仓储端口，JPA 查询始终同时包含租户条件。
-
-资源不存在和资源属于其他租户均表现为 404，避免泄露跨租户资源是否存在。
-
-## 11. 数据库
-
-### 11.1 表
-
-| 表 | 用途 |
-|---|---|
-| `projects` | 项目聚合和仓库版本 |
-| `repository_snapshots` | 文章生成所需仓库事实 |
-| `articles` | AI 生成草稿 |
-| `article_versions` | 不可变文章内容版本 |
-| `jobs` | 持久化异步任务 |
-| `channel_accounts` | 渠道元数据和加密凭据 |
-| `publications` | 渠道发布状态和外部资源定位 |
-| `manual_publications` | 人工发布适配内容快照、外链、操作人和时间 |
-| `audit_logs` | 业务审计 |
-| `flyway_schema_history` | 数据库版本 |
-
-### 11.2 重要唯一约束
-
-- `projects(tenant_id, git_url)`
-- `jobs(tenant_id, idempotency_key)`
-- `articles(generation_job_id)`
-- `article_versions(article_id, version_number)`
-- `channel_accounts(tenant_id, idempotency_key)`
-- `publications(publication_job_id)`
-
-### 11.3 迁移
-
-| 版本 | 内容 |
-|---|---|
-| V1 | 项目、仓库快照和文章基础表 |
-| V2 | 租户、操作者和审计表 |
-| V3 | 持久化任务和文章生成任务幂等字段 |
-| V4 | 渠道账号、加密凭据元数据和发布记录 |
-| V5 | 文章当前版本号和不可变版本快照 |
-| V6 | 发布记录 canonical URL |
-| V7 | 渠道凭据指纹、账号版本与版本检查约束 |
-| V8 | 本地用户、租户身份和用户角色表 |
-| V9 | 租户级 AI 服务配置和加密 API Key |
-| V10 | 本地用户首次登录强制修改密码 |
-| V11 | 人工发布内容快照和外部链接 |
-| V12 | 主题和网站文章来源 |
-| V13 | 文章标签与推荐关键词 |
-| V14 | 任务进度、发布批次和调度字段 |
-| V15 | 中英文双语文章与版本快照 |
-| V16 | 内容与任务软删除回收站 |
-| V17 | 渠道连接验证状态、说明和检查时间 |
-| V18 | Hashnode GraphQL 地址更新 |
-
-已发布迁移禁止修改。新增结构必须创建下一版本脚本，并同时验证 H2 和 PostgreSQL 语法兼容性。
-
-## 12. API 约定
-
-### 12.1 异步写接口
-
-```http
-POST /api/v1/projects/imports
-Authorization: Bearer <jwt>
-Idempotency-Key: import-owner-repository-20260720
-Content-Type: application/json
-```
-
-返回：
-
-```http
-HTTP/1.1 202 Accepted
-Location: /api/v1/jobs/{jobId}
-```
-
-另外两个异步写入口遵循同一协议：
-
-```text
-POST /api/v1/projects/{projectId}/articles
-POST /api/v1/articles/{articleId}/publications
-```
-
-渠道账号创建要求 `Idempotency-Key`，成功返回 `201 Created`；账号资料修改、启停和凭据轮换要求 `expectedVersion`，成功返回更新后的账号元数据。`POST /api/v1/channel-accounts/{id}/verify` 保存连接验证结果。审核接口通过资源状态实现幂等。
-
-单渠道和批量发布请求都可选携带 ISO-8601 UTC `scheduledAt`。任务响应返回持久化后的计划时间；`POST /api/v1/jobs/{jobId}/cancel` 只接受尚未领取的 `PENDING`、`RETRY_WAIT` 任务，成功返回 `CANCELLED` 任务视图。
-
-文章编辑使用 `PUT /api/v1/articles/{articleId}`，请求中的 `expectedVersion` 相当于领域级 If-Match。并发编辑只有一个请求能创建下一版本，其他请求返回 409。
-
-### 12.2 时间与 ID
-
-- 所有 ID 使用 UUID。
-- 所有时间使用 UTC `Instant`，JSON 为 ISO-8601。
-- 数据库配置 Hibernate JDBC UTC。
-
-### 12.3 错误协议
-
-```json
-{
-  "timestamp": "2026-07-20T03:48:35Z",
-  "status": 409,
-  "code": "IDEMPOTENCY_KEY_CONFLICT",
-  "message": "幂等键已用于不同请求",
-  "path": "/api/v1/projects/imports",
-  "traceId": "...",
-  "violations": []
-}
-```
-
-错误码属于 API 合同。修改文案可以兼容，随意修改错误码属于破坏性变更。
-
-## 13. 配置
-
-### 13.1 数据库
-
-| 环境变量 | 默认值 | 说明 |
+| 表 | 主要职责 | 关键关系/约束 |
 |---|---|---|
-| `DB_URL` | `jdbc:postgresql://127.0.0.1:5432/content_publisher` | PostgreSQL JDBC 地址 |
-| `DB_USERNAME` | `content_publisher` | 数据库用户 |
-| `DB_PASSWORD` | 空 | 生产必填 |
+| `projects` | Git 项目聚合 | 租户内 Git URL 唯一 |
+| `repository_snapshots` | 有限仓库事实 | 主键/外键 `project_id`，项目删除级联 |
+| `articles` | 当前中英文主稿与来源 | Git 可关联项目；生成任务唯一；软删除 |
+| `article_versions` | 不可变内容版本 | `(article_id, version_number)` 主键 |
+| `jobs` | 持久化任务 | 租户幂等唯一、调度/租约/进度/批次、软删除 |
+| `channel_accounts` | API 渠道账号 | 租户幂等唯一、账号版本、验证结果 |
+| `publications` | API 发布事实 | 发布任务唯一、文章和账号外键、软删除 |
+| `manual_publications` | 人工发布快照 | 文章外键、软删除 |
+| `audit_logs` | 业务审计 | 租户、动作和目标索引 |
+| `local_users` | LOCAL 用户 | 用户名全局唯一、租户索引、强制改密 |
+| `local_user_roles` | LOCAL 用户角色 | `(user_id, role)` 主键，用户删除级联 |
+| `ai_provider_settings` | 租户 AI 设置 | `tenant_id` 主键、加密 API Key、设置版本 |
+| `flyway_schema_history` | Flyway 历史 | Flyway 管理 |
 
-### 13.2 安全
+### 12.2 文章来源约束
 
-| 环境变量 | 默认值 | 说明 |
+V12 添加：
+
+- `source_type`
+- `source_title`、`source_url`、`source_description`
+- `target_audience`、`article_type`、`knowledge_level`
+- `source_keywords_json`
+
+Check 约束保证：
+
+- `GIT` 必须有 `project_id`。
+- `TOPIC`、`WEBSITE` 必须没有 `project_id`。
+
+### 12.3 软删除
+
+V16 为 `articles`、`jobs`、`publications`、`manual_publications` 添加 `deleted_at`、`deleted_by` 和租户删除时间索引。普通查询排除已删除记录，回收站使用专门方法查询。
+
+### 12.4 迁移
+
+| 版本 | 变更 |
+|---|---|
+| V1 | 项目、快照、文章 |
+| V2 | 租户、操作者、审计 |
+| V3 | 持久化任务和生成任务幂等 |
+| V4 | 渠道账号和 API 发布 |
+| V5 | 文章版本 |
+| V6 | canonical URL |
+| V7 | 凭据指纹和账号版本 |
+| V8 | LOCAL 用户和角色 |
+| V9 | 租户 AI 设置 |
+| V10 | 强制改密 |
+| V11 | 人工发布 |
+| V12 | 主题和网站来源 |
+| V13 | 文章与版本的标签字段 |
+| V14 | 任务进度、批次和调度 |
+| V15 | 中英文文章与版本 |
+| V16 | 软删除回收站 |
+| V17 | 渠道连接验证 |
+| V18 | Hashnode 地址更新 |
+
+已发布迁移不可修改。当前没有 Down Migration；数据库回滚依赖迁移前备份和兼容性评估。
+
+## 13. API 设计
+
+### 13.1 契约
+
+- API 版本前缀为 `/api/v1`。
+- Controller 不接受 `tenantId`。
+- UUID 和 UTC `Instant` 作为统一 ID/时间类型。
+- 异步提交返回 202。
+- 账号创建返回 201。
+- 软删除和恢复返回 204。
+- 错误响应有稳定 code、Trace ID 和字段错误。
+
+### 13.2 认证与 CSRF
+
+- JWT：REST 无状态、CSRF 关闭、Bearer Token。
+- LOCAL：Session，Web 和 REST 共用认证；CSRF 对写请求生效。
+- DISABLED：无状态且允许所有请求，只用于开发。
+
+### 13.3 接口清单
+
+Controller、路径、请求字段、角色和错误映射见 `API_REFERENCE.md`。新增接口时必须同时更新：
+
+1. Controller 和 DTO。
+2. `SecurityConfiguration.protectedRequests`。
+3. API 文档。
+4. 业务权限矩阵。
+5. 正常、校验、权限和租户测试。
+
+## 14. 安全设计
+
+### 14.1 信任边界
+
+不可信输入：
+
+- HTTP 请求字段和请求头。
+- Git URL、分支、README、代码注释和文件名。
+- 网站 URL、HTML、标题和正文。
+- AI JSON 输出。
+- 渠道 API 响应和外部 URL。
+- 人工发布回填 URL。
+
+所有边界在进入业务核心前或写入数据库前校验。
+
+### 14.2 SSRF
+
+Git、网站、AI 和自托管渠道都执行：
+
+- 协议限制。
+- UserInfo、Query、Fragment 限制。
+- 主机允许列表。
+- DNS 解析后的回环、私网、链路本地和组播拒绝。
+- 禁止或限制重定向。
+- 实际外部调用前重复校验。
+
+生产仍需出站网络策略，应用校验不能代替网络隔离。
+
+### 14.3 提示词注入
+
+- Git 和网站内容放入显式不可信边界。
+- 系统提示声明其中角色、指令和外部操作要求无效。
+- 主题参考说明同样不可信。
+- 模型不得虚构项目能力、性能、客户、兼容性、统计、案例或许可证。
+- 服务端确定性校验是最终质量门禁。
+
+### 14.4 XSS 与 Markdown
+
+- Portal 使用 Thymeleaf 默认转义。
+- Markdown 通过受控 Renderer 生成预览。
+- CSP 限制脚本、对象、Frame 和来源。
+- 外部链接和用户文案不直接作为未转义 HTML。
+
+### 14.5 CSRF、会话与密码
+
+- LOCAL 表单和写请求使用 CSRF。
+- 登录成功迁移 Session，最多一个并发会话。
+- 退出使 Session 失效并删除 JSESSIONID。
+- 密码使用 BCrypt 12，不保存明文。
+- 强制改密 Filter 在业务访问前拦截。
+
+### 14.6 授权与租户
+
+- 认证不能替代资源授权。
+- URL 级角色检查后，应用仓储仍使用租户过滤。
+- Admin 专属能力包括审核、渠道管理、AI 设置、删除和恢复。
+- 跨租户访问统一 404。
+
+### 14.7 日志与错误
+
+- 日志使用 Trace ID。
+- 不记录 Authorization、API Key、Token、密码、完整凭据、任务 Payload 或完整仓库内容。
+- 外部错误转换为有限业务错误。
+- REST 不返回堆栈、SQL 或内部路径。
+
+## 15. 前端与页面设计
+
+- Thymeleaf 服务端渲染保证业务正文不依赖客户端 JS 才出现。
+- 管理后台是私有应用，所有模板设置 `noindex,nofollow`。
+- 共享 Sidebar/Topbar 片段建立页面层级。
+- 原生 JS 提供移动端导航、焦点恢复、复制、字数统计、脏表单提醒、局部轮询和 CSRF Header。
+- 发布批次存在活动任务时每 5 秒刷新局部 HTML。
+- 页面应处理空、加载、错误、权限、长文本和移动端状态。
+- 关键写操作使用确认或明确按钮文案。
+
+## 16. 配置设计
+
+`application.yml` 把环境变量映射到类型化 Properties。当前应用配置包括：
+
+- 服务与数据库。
+- Session 和安全模式。
+- 默认租户/主体与 LOCAL 初始化。
+- Git 资源和安全限制。
+- 网站抓取限制。
+- AI 默认配置、地址策略和租户秘密主密钥。
+- 持久化任务配额、轮询、租约和重试。
+- 渠道启停、主密钥、允许主机和超时。
+- Actuator 暴露和 UTC Hibernate。
+
+完整 46 个应用环境变量、部署辅助变量、默认值和影响见 `OPERATIONS.md`。新增 `@ConfigurationProperties` 字段时必须：
+
+1. 更新 `application.yml`。
+2. 更新 `.env.example`。
+3. 检查 Compose/systemd 是否透传。
+4. 更新运维文档和 README。
+5. 增加配置校验测试。
+
+## 17. 测试设计
+
+### 17.1 当前测试层次
+
+| 层次 | 代表测试 | 风险 |
 |---|---|---|
-| `PUBLISHER_SECURITY_MODE` | `DISABLED` | 安全模式：`LOCAL`、`JWT` 或 `DISABLED`；生产禁止使用 `DISABLED` |
-| `PUBLISHER_LOCAL_ADMIN_USERNAME` | 空 | 首次启动创建的管理员用户名 |
-| `PUBLISHER_LOCAL_ADMIN_PASSWORD` | 空 | 首次启动密码，至少 16 位，初始化后移除 |
-| `PUBLISHER_LOCAL_ADMIN_TENANT` | `local` | 首次管理员所属租户 |
-| `PUBLISHER_LOCAL_ADMIN_MUST_CHANGE_PASSWORD` | `true` | 初始管理员首次登录强制修改密码 |
-| `PUBLISHER_SESSION_COOKIE_SECURE` | `false` | HTTPS 部署必须为 true |
-| `PUBLISHER_SESSION_TIMEOUT` | `30m` | 登录会话超时 |
-| `SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI` | 无 | OIDC Issuer |
-| `PUBLISHER_SECURITY_TENANT_CLAIM` | `tenant_id` | 租户 Claim |
-| `PUBLISHER_SECURITY_ROLES_CLAIM` | `roles` | 角色 Claim |
+| 应用服务单元 | `ProjectApplicationServiceTest`、`JobApplicationServiceTest`、`RecordManagementApplicationServiceTest` | 状态、幂等、配额、删除恢复 |
+| AI/网站安全 | `OpenAiCompatibleContentGeneratorTest`、`SecureAiEndpointPolicyTest`、`SecureWebsiteInspectorTest` | 输出校验、SSRF、响应限制 |
+| 发布与加密 | `PublishingApplicationServiceTest`、`OfficialChannelPublishersTest`、`AesGcmCredentialVaultTest`、`AesGcmSecretCipherTest` | 审核门禁、请求映射、凭据 |
+| 内容适配 | `PlatformContentAdapterTest` | Markdown、普通文本、短帖和字符限制 |
+| Worker | `DurableJobWorkerTest`、`DurableJobIntegrationTest` | 领取、重试、租约、调度、取消 |
+| 持久化与租户 | `TenantPersistenceIntegrationTest` | Flyway、JPA、租户、审计、并发 |
+| 安全 | `SecurityIntegrationTest`、`LocalSecurityIntegrationTest` | JWT、LOCAL、CSRF、角色、改密 |
+| 架构 | `ArchitectureBoundaryTest` | 模块依赖和入口边界 |
+| 上下文 | `PublisherApplicationTest` | Bean、Flyway、Hibernate 装配 |
+| SEO | `ArticleSeoViewTest` | 评分规则 |
 
-### 13.3 Git
-
-| 环境变量 | 默认值 |
-|---|---|
-| `GIT_WORK_DIRECTORY` | `/data/tmp/content-publisher` |
-| `GIT_ALLOWED_HOSTS` | `github.com,gitlab.com,gitee.com` |
-| `GIT_TIMEOUT_SECONDS` | `30` |
-| `GIT_MAX_REPOSITORY_BYTES` | `104857600` |
-| `GIT_MAX_FILES` | `2000` |
-
-### 13.4 AI
-
-| 环境变量 | 默认值 |
-|---|---|
-| `PUBLISHER_AI_ENABLED` | `false` |
-| `PUBLISHER_AI_BASE_URL` | `http://127.0.0.1:11434/v1` |
-| `PUBLISHER_AI_MODEL` | `qwen3:14b` |
-| `PUBLISHER_AI_TIMEOUT` | `90s` |
-| `PUBLISHER_AI_TEMPERATURE` | `0.2` |
-| `PUBLISHER_AI_ALLOWED_HOSTS` | 空；允许任意公网 HTTPS 域名 |
-| `PUBLISHER_AI_ALLOW_PRIVATE_ADDRESSES` | `false` |
-| `PUBLISHER_SECRETS_ENCRYPTION_KEY` | 空；Web 保存 API Key 前必须配置 Base64 32 字节密钥 |
-
-数据库存在租户级 AI 配置时优先于环境默认值。API Key 使用 AES-256-GCM 保存，AAD 包含租户标识；密文跨租户替换会导致认证标签校验失败。AI HTTP 客户端不跟随重定向，每次请求前重新执行 URL、域名和解析地址校验，并限制响应体为 2MB。
-
-`PUBLISHER_AI_API_KEY` 无安全默认值，必须通过运行环境注入。
-
-### 13.5 任务
-
-| 环境变量 | 默认值 |
-|---|---|
-| `PUBLISHER_JOBS_WORKER_ENABLED` | `true` |
-| `PUBLISHER_JOBS_MAX_ACTIVE_PER_TENANT` | `20` |
-| `PUBLISHER_JOBS_MAX_ATTEMPTS` | `4` |
-| `PUBLISHER_JOBS_POLL_INTERVAL` | `1s` |
-| `PUBLISHER_JOBS_LOCK_TIMEOUT` | `5m` |
-| `PUBLISHER_JOBS_INITIAL_RETRY_DELAY` | `10s` |
-| `PUBLISHER_JOBS_MAX_RETRY_DELAY` | `5m` |
-
-### 13.6 渠道
-
-| 环境变量 | 默认值 | 说明 |
-|---|---|---|
-| `PUBLISHER_CHANNELS_ENABLED` | `false` | 是否允许创建账号和执行发布 |
-| `PUBLISHER_CHANNELS_ENCRYPTION_KEY` | 空 | Base64 编码的 32 字节 AES 主密钥 |
-| `PUBLISHER_CHANNELS_ALLOWED_HOSTS` | 空 | WordPress、Discourse、Mastodon、Ghost HTTPS 主机允许列表 |
-| `PUBLISHER_CHANNELS_TIMEOUT` | `30s` | 单次渠道 API 调用超时 |
-
-生成主密钥：
-
-```bash
-openssl rand -base64 32
-```
-
-## 14. 开发与测试
-
-### 14.1 完整验证
+### 17.2 验证命令
 
 ```bash
 mvn clean verify
 ```
 
-### 14.2 测试层次
+### 17.3 新增功能要求
 
-- AI 适配器测试：模拟 Chat Completions 服务，验证输出接受和拒绝。
-- 渠道适配器测试：模拟官方 API，验证认证 Header、请求体和响应映射。
-- 凭据测试：验证随机 IV、加解密、HMAC 指纹、人工轮换、X/Reddit OAuth 刷新、自动持久化和错误主密钥拒绝。
-- 发布服务测试：验证审核门禁、英文稿预检、发布状态和外部 URL 保存。
-- Worker 单元测试：验证临时错误重试和最后一次失败。
-- 持久化集成测试：验证任务领取、计划时间、取消状态边界、完成和过期租约。
-- 多租户测试：验证同仓库跨租户隔离和审计。
-- Security/MockMvc 测试：验证 401、403、202、账号生命周期权限和轮换密文不含明文。
-- Context 测试：验证 Flyway、Hibernate Schema 和 Spring Bean 装配。
+至少覆盖：
 
-新增功能必须至少覆盖正常流程、权限拒绝、租户隔离、重复请求和失败恢复。
+- 正常结果。
+- 边界值和空输入。
+- 权限不足。
+- 跨租户访问。
+- 重复提交和并发版本冲突。
+- 外部超时或失败。
+- 数据库事务和恢复。
+- 文档中的验收规则。
 
-## 15. 部署与运维
+### 17.4 当前测试缺口
 
-### 15.1 目录
+- 没有 PostgreSQL Testcontainers。
+- 没有真实多实例数据库锁集成测试。
+- 没有浏览器级端到端自动化。
+- 没有自动 OpenAPI 契约测试。
+- 没有生产备份恢复自动化演练。
 
-- 源码：`/data/projects/content-publisher`
-- 运行目录：`/data/services/content-publisher`
-- PostgreSQL 绑定数据：`/data/services/content-publisher/data/postgres`
-- 生产环境文件：`/data/services/content-publisher/.env`，权限建议为 `0600`
-- 临时仓库：`/data/tmp/content-publisher`
-- 数据、配置和日志放入所属服务目录。
+这些缺口不能被现有 H2 测试结果掩盖。
 
-使用 Compose 时，Git 临时仓库位于容器 `tmpfs`，不会写入源码目录；数据库通过 `PUBLISHER_SERVICE_DATA_DIR` 绑定到服务目录。启动命令以根目录 [README](../README.md) 为准。
+## 18. 构建、部署与运维
 
-### 15.2 健康检查
+### 18.1 构建
 
-```text
-GET /actuator/health
-GET /actuator/health/liveness
-GET /actuator/health/readiness
-```
+- 根 Maven Reactor 构建四个模块。
+- Web 模块生成可执行 Spring Boot JAR。
+- Dockerfile 从 `publisher-web/target/publisher-web-*.jar` 构建非 root 镜像。
+- 容器工作目录为 `/data/services/content-publisher`，用户 UID 10001。
 
-### 15.3 生产要求
+### 18.2 健康
 
-- 使用 PostgreSQL，不使用 H2 文件库承载正式数据。
-- 开启本地登录或 JWT 安全模式，禁止两者同时关闭。
-- 通过 TLS 反向代理访问。
-- API Key 和数据库密码由 Secret 管理器或受限环境文件注入。
-- 配置数据库备份和恢复演练。
-- 监控任务积压、失败率、重试率、AI 延迟和 Git 导入耗时。
-- 备份渠道主密钥并限制读取权限；密钥丢失后渠道凭据不可恢复。
+- `/actuator/health`
+- `/actuator/health/liveness`
+- `/actuator/health/readiness`
+- `/actuator/metrics`、`/actuator/prometheus` 需要 Admin。
 
-## 16. 开发规范
+### 18.3 部署模板
 
-- 新业务概念先进入 Domain，再定义 Application Port，最后实现 Adapter。
-- Controller 只负责协议转换、校验和身份上下文，不编写业务流程。
-- 不允许在应用服务中执行 shell `git` 命令，统一使用受控 JGit 适配器。
-- 不允许在日志中输出请求 Authorization、AI Key、完整仓库内容或任务 Payload。
-- 外部错误转换为稳定 `ApplicationException` 错误码。
-- 所有列表输入需要去空、去重和上限。
-- 所有跨租户仓储方法必须显式接收 `tenantId`。
-- 所有写 API 必须设计幂等策略。
-- 长时间外部操作必须进入持久化任务，不在 HTTP 线程直接执行。
+- Compose：PostgreSQL + 应用，数据库数据绑定到 `/data/services/content-publisher/data/postgres`，Git 临时目录使用 tmpfs。
+- systemd：原生 JAR、受限用户、只读系统保护、显式可写目录和文件日志。
 
-## 17. 渠道适配器
+Compose 当前按 JWT 模式设计且未透传所有应用变量。具体限制、systemd 路径、备份、迁移、健康、回滚和故障排查见 `OPERATIONS.md`。
 
-当前发布端口为：
+## 19. 扩展规范
 
-```java
-public interface ChannelPublisher {
-    ChannelType channelType();
-    PublishResult publish(ChannelAccount account, PublishContent content,
-                          Map<String, String> credentials);
-}
-```
+### 19.1 新内容来源
 
-已实现：
+1. 在 Domain 添加来源类型和 Brief/Snapshot。
+2. 扩展 `ContentOrigin` 约束。
+3. 增加 JobType、JobPayload 和 Handler。
+4. 在 `ContentGenerationApplicationService` 增加用例。
+5. 扩展持久化映射和迁移。
+6. 增加 REST/Portal 入口、权限和 DTO。
+7. 增加 AI 不可信边界与输出测试。
+8. 更新业务、API、技术、README 和运维文档。
 
-| 渠道 | 协议 | 发布入口 |
-|---|---|---|
-| DEV | REST + API Key | `POST /api/articles` |
-| WordPress | REST + Application Password | `POST /wp-json/wp/v2/posts` |
-| Discourse | REST + API Key/User | `POST /posts.json` |
-| GitHub Discussions | GraphQL + Bearer Token | `createDiscussion` mutation |
-| Twitter/X | REST + OAuth 2 Authorization Code/Refresh Token | 刷新 `/2/oauth2/token`，发布 `POST /2/tweets` |
-| Reddit | REST + OAuth 2 Refresh Token | 刷新 `/api/v1/access_token`，发布 `POST /api/submit` |
-| Hashnode | GraphQL + Token | `publishPost` mutation |
-| Medium | REST + Integration Token | `POST /v1/users/{authorId}/posts` |
-| Mastodon | REST + OAuth Bearer | `POST /api/v1/statuses` |
-| Ghost | Admin REST + HS256 JWT | `POST /ghost/api/admin/posts/?source=html` |
+### 19.2 新 API 渠道
 
-X 凭据字段为 `accessToken`、`refreshToken`、`clientId`、`clientSecret`；Reddit 额外要求 `subreddit`。Medium 的 Integration Token 已停止向新用户开放，渠道目录将其标记为“停止新接入”，不再允许创建新账号。Ghost `adminApiKey` 必须为 `id:hexSecret`，请求时生成 `aud=/admin/`、5 分钟有效期的 HS256 JWT。
+1. 在 `ChannelType` 和 `ChannelCatalog` 定义能力、格式、字符限制、域名和凭据。
+2. 实现独立 `ChannelPublisher`。
+3. 如需 OAuth，扩展 `ChannelCredentialRefresher`。
+4. 在连接验证器中实现安全的探测。
+5. 不允许 Cookie、验证码或模拟登录。
+6. 添加请求/响应、错误、地址和凭据测试。
+7. 更新全部渠道清单和配置文档。
 
-`canonicalUrl` 必须是最长 2048 字符、不含 UserInfo 的 HTTPS URL。DEV、Hashnode、Medium、Ghost 使用渠道原生字段；WordPress、Discourse、GitHub Discussions、Reddit 附加正文链接；Twitter/X 与 Mastodon 生成受长度控制的推广短帖。发布任务请求哈希包含该字段。
+### 19.3 新持久化任务
 
-每个渠道独立实现适配器，并声明：
+1. 增加 `JobType` 和封闭 `JobPayload`。
+2. 实现唯一 `JobHandler`。
+3. 定义进度、结果资源类型、重试集合和幂等哈希。
+4. 验证配额、租约、取消和恢复。
+5. 更新 JobResponse、页面标签、监控和文档。
 
-- 支持的内容类型。
-- 标题和正文长度。
-- 图片、视频和外链规则。
-- 是否支持修改、删除和定时发布。
-- 限流与重试策略。
-- 是否必须人工确认。
+### 19.4 数据库变更
 
-新增渠道必须使用官方 API，声明凭据字段并实现确定性的请求/响应映射。不得把 Cookie、验证码绕过或浏览器模拟登录放入 Adapter。OAuth Token 属于 L4 数据，必须通过 `CredentialVault` 保存。
+- 只新增 Flyway 版本。
+- 明确前置检查、索引、约束、回填、兼容窗口、验证和回滚。
+- 更新表清单、迁移表、实体、Mapper 和集成测试。
+- 生产前备份并验证恢复路径。
 
-## 18. 后续技术计划
+## 20. 已知技术债
 
-1. 增加审核历史；文章版本表、正文编辑和基础审核状态机已完成。
-2. 增加 Prompt Template、版本号、模型参数和生成成本记录。
-3. 增加任务指标、管理员批量重放和死信处理；单任务取消已完成。
-4. 将单线程轮询扩展为可配置工作器并发，同时保持数据库领取一致性。
-5. 增加 PostgreSQL Testcontainers 验证数据库锁与串行化事务。
-6. 增加 OAuth 到期提醒和主密钥版本化迁移；渠道连通性检查和 X/Reddit Refresh Token 自动轮换已完成。
-7. 为无稳定官方发布 API 的平台生成草稿包和人工发布任务，不引入 Cookie 模拟登录。
+1. 审核事实只有通用审计，没有独立审核历史模型。
+2. 主密钥没有版本化和在线迁移。
+3. Worker 单线程轮询，没有可配置并发。
+4. 没有死信表、管理员批量重放和任务级指标告警。
+5. H2 不能完全代表 PostgreSQL 锁和串行化语义。
+6. Compose 未覆盖 LOCAL Profile 和全部环境变量。
+7. API 文档为人工维护，尚未生成 OpenAPI。
+8. 发布效果、UTM、日历和 OAuth 到期提醒未实现。
+
+## 21. 文档维护门禁
+
+### 21.1 变更映射
+
+| 变更 | 必须更新 |
+|---|---|
+| 用户能力、角色、页面、状态、渠道、验收 | `FUNCTIONAL_SPEC.md` |
+| 框架、模块、服务、端口、适配器、数据流、安全 | 本文档 |
+| Controller、DTO、角色规则、状态码、错误码 | `API_REFERENCE.md` |
+| 环境变量、Docker、Compose、systemd、迁移、健康、回滚 | `OPERATIONS.md` |
+| 当前状态、启动方式、文档入口、主要限制 | `README.md` |
+| 运营发布步骤与平台适配 | `PUBLISHING_WORKFLOW.md` |
+
+### 21.2 实施要求
+
+- 修改前先做文档影响分析。
+- 代码和文档在同一任务、同一提交范围内更新。
+- 纯内部重构也必须更新组件索引、实现说明、测试映射或本节变更记录，并声明外部行为不变。
+- 交付前对照 Controller、DTO、`application.yml`、迁移和测试抽查文档。
+- 检查链接、章节、路径、变量、版本、状态和数量。
+
+### 21.3 当前文档基线记录
+
+2026-07-22：按当前代码重建 README、业务说明、技术设计、API 参考、运维手册和发布流程；纠正三类内容来源、31 个 REST 操作、27 个渠道、任务取消状态、AI Key 加密落库、LOCAL Session、安全配置、数据库表和部署路径等历史不一致。此次只修改文档和全局开发规范，外部运行行为不变。

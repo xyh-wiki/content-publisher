@@ -1,478 +1,658 @@
-# Content Publisher 功能说明文档
+# Content Publisher 业务说明文档
 
-## 1. 文档目的
+## 1. 文档信息
 
-本文档描述 Content Publisher 的产品目标、用户角色、功能范围、业务流程、业务规则和验收口径。面向产品、运营、测试、项目负责人和实施人员。
+| 项目 | 内容 |
+|---|---|
+| 文档基线 | 2026-07-22 |
+| 适用版本 | `0.1.0-SNAPSHOT` |
+| 目标读者 | 产品、运营、审核、测试、实施、开发和运维人员 |
+| 事实来源 | 当前领域模型、应用服务、Controller、DTO、迁移和测试 |
 
-当前版本交付内容生产、人工审核、平台内容自适应、9 个可新接入的官方 API 渠道、Medium 存量适配器、17 个人工发布渠道和渠道账号生命周期管理。
+本文档描述当前已经实现的业务能力、业务规则和验收口径。规划项单独放在“当前边界与后续计划”，不得与已实现功能混写。
 
-## 2. 产品目标
+代码、页面、接口、权限、状态、渠道或业务规则变化时，必须在同一变更中更新本文档。
 
-平台用于统一管理技术项目及其推广内容，降低以下工作的重复成本：
+## 2. 产品定位
 
-- 阅读代码仓库并整理项目背景、能力和技术架构。
-- 针对不同项目稳定生成结构化技术文章。
-- 控制文章关键词、长度、章节和语言风格，并在生成阶段完成系统化 SEO 优化。
-- 防止重复提交、重复生成和任务执行中断造成的数据不一致。
-- 在多组织环境中隔离项目、文章、任务和审计数据。
-- 为 DEV、WordPress、Discourse、GitHub Discussions、Twitter/X、Reddit、Hashnode、Medium、Mastodon、Ghost 等渠道提供统一内容底座。
+Content Publisher 用于把可信技术资料转换为可审核、可追溯、可多渠道分发的内容。平台解决以下问题：
 
-## 3. 用户角色
+- 从 Git 项目、结构化主题或公开网站整理技术事实。
+- 使用受控 AI 生成中文和英文技术内容。
+- 统一管理标题、摘要、正文、标签、关键词和来源。
+- 通过版本、审核、租户隔离和审计降低错误发布风险。
+- 把一份主稿转换为不同平台需要的 Markdown、普通文本或短帖。
+- 使用官方 API 自动发布，或通过合规人工工作区完成无稳定 API 平台的发布。
+- 通过持久化任务、发布记录、监控和回收站处理长耗时任务与运营恢复。
 
-| 角色 | 主要职责 | 当前权限 |
-|---|---|---|
-| Viewer | 查看项目和任务进度 | 读取项目、文章、任务和发布结果 |
-| Editor | 导入项目、生成和发布内容 | Viewer 权限，加上提交 Git 导入、文章生成及已审核文章发布任务 |
-| Admin | 审核与渠道管理 | Editor 权限，加上文章审核、渠道账号创建、启停和凭据轮换 |
-| AI 服务 | 生成结构化内容 | 仅通过服务端调用，不直接访问数据库或用户身份信息 |
-| 后台工作器 | 执行持久化任务 | 领取任务、调用 Git/AI、更新任务状态并写审计 |
+## 3. 范围
 
-平台支持两种生产身份模式：外部 OIDC/JWT，或 PostgreSQL 本地账号登录。本地模式只保存 BCrypt 密码哈希，不保存或返回密码明文。初始管理员默认标记为必须修改密码；在完成改密前，只允许访问改密、退出和健康检查入口，业务 API 返回 `PASSWORD_CHANGE_REQUIRED`。新密码长度为 8–128 位，必须同时包含大写字母、小写字母、数字和特殊字符。
+### 3.1 当前范围内
 
-## 4. 租户模型
+- Git 项目导入、仓库分析和项目文章生成。
+- 主题教程/指南类文章生成。
+- 公开网站推荐文章生成。
+- 租户级 AI 服务设置。
+- 中英文内容、SEO 辅助、编辑、版本和审核。
+- API 渠道账号生命周期和真实官方 API 发布。
+- 17 个人工发布渠道。
+- 定时发布、批量发布、取消、失败发布人工重试。
+- 发布统一记录、文章/渠道覆盖视图。
+- 项目、内容、任务、发布、账号和渠道表现监控。
+- 文章和任务软删除、关联记录隐藏与恢复。
+- LOCAL 或 JWT 身份、RBAC、租户隔离和业务审计。
 
-- JWT 中的 `tenant_id` 或本地账号的 `tenant_id` 是业务数据隔离边界。
-- 同一用户只能访问当前令牌所属租户的数据。
-- 项目、仓库快照、文章、任务和审计记录均包含租户信息。
-- 不同租户可以导入同一个 Git 地址，并形成各自独立的项目和文章。
-- 不允许通过请求参数指定或切换租户，避免越权访问。
+### 3.2 当前范围外
 
-## 5. 功能范围
+- 自动模拟登录、保存第三方密码、Cookie、验证码或绕过开放接口。
+- 独立审核历史表；当前审核事实保存在审计日志。
+- 主加密密钥在线迁移。
+- UTM 策略、发布日历、效果回收和 OAuth 到期提醒。
+- 自动生成 OpenAPI 制品。
+- 不确定外部发布结果的自动盲目重试。
+- 自动修改或删除第三方平台上的已发布内容。
 
-### 5.0 Web 管理工作台
+## 4. 术语
 
-本地登录用户可在响应式管理后台完成第一阶段内容生产闭环：
+| 术语 | 含义 |
+|---|---|
+| 租户 | 数据与权限隔离的组织边界 |
+| 主稿 | 文章表中的可信中文/英文内容 |
+| 派生内容 | 根据渠道格式从主稿转换出的发布内容 |
+| 项目快照 | Git 仓库某次 Commit 的有限事实集合 |
+| 持久化任务 | 保存到数据库、可查询和恢复的异步工作 |
+| API 发布 | 平台调用官方 API 产生的发布 |
+| 人工发布 | 用户复制派生内容，在官方页面发布并回填结果 |
+| 发布预检 | 创建发布任务前对文章、账号、凭据、地址和英文稿的服务端校验 |
+| 活动任务 | `PENDING`、`RUNNING` 或 `RETRY_WAIT` |
 
-- 查看当前租户最近项目、任务和文章。
-- 提交 Git 项目导入表单，并进入自动刷新的任务详情页。
-- 查看项目状态、Commit、分支、语言、许可证和项目文章。
-- 配置文章语言、语气、字数、关键词上下限、禁用词和必备章节。
-- 查看和编辑 Markdown 草稿，每次保存创建不可变版本。
-- Admin 在文章页面审核通过或填写原因驳回。
+## 5. 用户与权限
 
-所有 Web 写操作使用服务端生成的幂等键并受 CSRF 防护；页面权限与 REST API 使用同一套 RBAC 和租户边界。AI 未启用或项目未就绪时，生成入口必须明确禁用并显示原因。
+### 5.1 角色
 
-### 5.1 项目导入
+| 角色 | 业务职责 |
+|---|---|
+| Viewer | 查看当前租户的项目、内容、任务、发布结果和监控 |
+| Editor | 创建和编辑内容、提交发布、取消任务、人工发布和重试失败发布 |
+| Admin | 审核、渠道和 AI 设置、软删除与恢复，以及所有 Editor 能力 |
+| AI 服务 | 只接收服务端构造的请求，不直接访问数据库或用户身份 |
+| 后台工作器 | 领取持久化任务，调用外部系统并更新状态 |
 
-Editor 或 Admin 提交 Git 地址后，平台创建 `IMPORT_PROJECT` 异步任务。
+### 5.2 权限矩阵
 
-输入：
+| 能力 | Viewer | Editor | Admin |
+|---|:---:|:---:|:---:|
+| 查看项目、内容、任务、发布、监控 | 是 | 是 | 是 |
+| 导入 Git、生成主题/网站内容 | 否 | 是 | 是 |
+| 编辑草稿或驳回稿 | 否 | 是 | 是 |
+| 查看渠道账号元数据 | 否 | 是 | 是 |
+| 提交 API/人工发布 | 否 | 是 | 是 |
+| 取消待执行任务 | 否 | 是 | 是 |
+| 重试失败发布 | 否 | 是 | 是 |
+| 审核通过或驳回 | 否 | 否 | 是 |
+| 创建、修改、启停、验证、轮换渠道账号 | 否 | 否 | 是 |
+| 修改租户 AI 设置 | 否 | 否 | 是 |
+| 软删除和恢复文章/任务 | 否 | 否 | 是 |
 
-- Git HTTPS 地址，必填。
-- 分支名称，选填；不提供时使用远程默认分支。
+LOCAL 模式下，处于强制改密状态的用户只能访问登录、改密、退出和健康检查。业务 API 返回 `PASSWORD_CHANGE_REQUIRED`。
+
+## 6. 租户模型
+
+- JWT 模式从可配置 Claim 读取租户；LOCAL 模式从本地用户读取租户。
+- 客户端不能通过请求参数指定或切换租户。
+- 项目、快照、文章、版本、任务、渠道账号、发布、人工发布、AI 设置和审计都按租户隔离。
+- 同一 Git URL 可以由不同租户分别导入。
+- 资源不存在和跨租户访问都表现为 404。
+- 监控统计、发布列表和回收站只计算当前租户数据。
+
+## 7. 内容来源
+
+平台支持三类文章来源，最终都生成统一的 Article。
+
+### 7.1 Git 项目
+
+#### 输入
+
+- Git HTTPS 地址，必填，最长 2048。
+- 分支，可选，最长 255；为空时使用远程默认分支。
 - `Idempotency-Key`，必填。
 
-地址规则：
+#### 地址规则
 
-- 仅接受 HTTPS。
-- 禁止 URL 中包含用户名、密码、Token、查询参数或 URL Fragment。
-- Git 主机必须在服务器允许列表中。
-- DNS 解析结果不得为回环、私网、链路本地或组播地址。
+- 只允许 HTTPS。
+- 禁止 UserInfo、查询参数和 Fragment。
+- 主机必须在 `GIT_ALLOWED_HOSTS`。
+- DNS 不得解析到回环、私网、链路本地或组播地址。
 
-仓库处理规则：
+#### 仓库处理
 
-- 使用浅克隆，不递归克隆子模块。
-- 限制克隆超时、仓库总大小和文件数量。
-- 任务结束后删除临时目录。
-- 导入失败时项目状态记录为 `FAILED`，任务按错误类型决定重试或终止。
+- 使用 JGit 浅克隆，深度 1。
+- 不递归克隆子模块。
+- 限制超时、总大小、文件数、README 字符数和目录树范围。
+- 临时目录在任务结束后清理。
+- 提取项目名称、描述、默认分支、Commit、README、构建清单摘要、目录树、主要语言和 License。
+- 项目状态为 `ANALYZING`、`READY` 或 `FAILED`。
+- 只有 `READY` 项目可以生成文章。
 
-### 5.2 仓库分析
+#### 结果
 
-平台从仓库中提取：
+生成文章来源类型为 `GIT`，保存项目 ID 和源 Commit，便于内容追溯。
 
-- 项目名称。
-- README 内容和首段描述。
-- 默认分支和当前 Commit ID。
-- `pom.xml`、`package.json`、`pyproject.toml`、`Cargo.toml`、`go.mod` 等构建清单摘要。
-- 有限深度和数量的文件目录树。
-- 主要编程语言。
-- License 文件是否存在。
+### 7.2 结构化主题
 
-仓库分析结果形成项目快照。文章必须记录生成时使用的 Commit ID，便于追溯内容来源。
+#### 输入
 
-### 5.3 AI 文章生成
-
-只有状态为 `READY` 的项目可以提交文章生成任务。
-
-Admin 可在 Web 管理后台按租户配置 OpenAI Chat Completions 兼容服务：
-
-- Base URL 必须为 HTTPS，禁止凭据、查询参数和片段。
-- 默认拒绝回环、私网、链路本地和组播地址；可由服务器配置进一步限制允许域名。
-- API Key 仅在保存时接收，使用 AES-256-GCM 和租户绑定的 AAD 加密，不在页面、API、审计或日志中回显。
-- 留空 API Key 表示保留现有密文；显式勾选清除才会删除。
-- 配置包含模型、5–300 秒超时、0–1 温度、启停状态和原子版本号。
-- 保存后立即生效，生成任务在每次调用前重新读取配置并再次验证目标地址。
-
-用户可控制：
-
-| 控制项 | 说明 |
+| 字段 | 业务含义 |
 |---|---|
-| language | 输出语言，例如 `zh-CN` |
-| tone | 内容语气，例如“专业、客观、面向开发者” |
-| minCharacters | Markdown 正文最小字符数，最低 200 |
-| maxCharacters | Markdown 正文最大字符数，最高 3000 |
-| maxKeywords | 最终关键词最大数量，范围 1–30 |
-| requiredKeywords | 标题、摘要或正文中必须出现的关键词 |
-| excludedKeywords | 标题、摘要、正文和关键词列表中禁止出现的内容 |
-| requiredSections | Markdown 中必须存在的二级标题 |
+| topic | 主题，最长 300 |
+| description | 需要覆盖的背景和内容，最长 4000 |
+| audience | 目标读者，最长 500 |
+| articleType | 教程、知识指南、最佳实践、排障或概念说明 |
+| knowledgeLevel | 入门、中级、高级或混合 |
+| keywords | 最多 30 个期望关键词 |
+| referenceNotes | 最长 10000 的参考说明 |
 
-AI 必须返回包含以下字段的 JSON：
+参考说明属于不可信输入，不能覆盖系统规则或要求执行外部操作。
 
-```json
-{
-  "title": "文章标题",
-  "summary": "文章摘要",
-  "markdown": "Markdown 正文",
-  "tags": ["发布标签"],
-  "keywords": ["SEO 关键词"],
-  "titleEn": "English title",
-  "summaryEn": "English meta description",
-  "markdownEn": "English Markdown body",
-  "tagsEn": ["English tag"],
-  "keywordsEn": ["English SEO keyword"]
-}
+#### 结果
+
+来源类型为 `TOPIC`，文章不关联 Git 项目，保存主题、说明、受众、类型、知识级别和来源关键词。
+
+### 7.3 公开网站
+
+#### 输入
+
+- HTTPS 网站 URL，最长 2048。
+- 推荐角度，最长 2000。
+- 目标读者，最长 500。
+- 最多 30 个关键词。
+
+#### 网站安全
+
+- 只允许 HTTPS。
+- 拒绝凭据、危险地址和不安全重定向。
+- 不跟随任意重定向。
+- 限制请求超时、响应字节数和提取文本字符数。
+- 文本过短、响应过大或地址不安全时不创建文章。
+
+#### 结果
+
+来源类型为 `WEBSITE`，保存规范化 URL、页面标题、推荐角度和受众。网站内容只是事实材料，不能被当作系统指令。
+
+## 8. AI 生成
+
+### 8.1 租户级设置
+
+Admin 可以配置：
+
+- HTTPS OpenAI 兼容 Base URL。
+- API Key。
+- 模型。
+- 5–300 秒超时。
+- 0–1 温度。
+- 启停状态。
+- 原子设置版本。
+
+API Key 使用 AES-256-GCM 加密后保存到数据库。页面和 API 不回显密文或明文。留空表示保留现有 Key，显式清除才删除。
+
+租户配置优先于环境默认配置。每次调用前重新读取并校验地址。
+
+### 8.2 通用生成策略
+
+| 控制项 | 规则 |
+|---|---|
+| language | 必填，最长 20 |
+| tone | 必填，最长 50 |
+| minCharacters | 200–3000 |
+| maxCharacters | 200–3000，且不小于最小长度 |
+| maxKeywords | 1–30 |
+| requiredKeywords | 必选词，数量不能超过关键词上限 |
+| excludedKeywords | 最多 100 个禁用词 |
+| requiredSections | 最多 20 个二级章节 |
+
+同一关键词不能同时属于必选和禁用集合。
+
+### 8.3 AI 输出
+
+AI 返回中文和英文结构化字段：
+
+- 标题、摘要、Markdown。
+- 标签和 SEO 关键词。
+- 英文标题、摘要、Markdown、标签和关键词。
+
+### 8.4 确定性校验
+
+服务端不直接信任模型输出：
+
+- 中文标题、摘要和正文不能为空。
+- 中文正文满足请求长度。
+- 英文正文最多 3000 字符，轻微超限时收紧。
+- 必选关键词必须出现，主关键词必须位于标题、摘要或正文前部。
+- 禁用关键词不能出现。
+- 必选章节必须形成 Markdown H2。
+- 长文章必须有足够的 H2 结构。
+- 中文标题最多 80 字符，英文标题最多 100 字符。
+- 中文摘要最多 200 字符，英文摘要最多 320 字符。
+- 标签和关键词去空、去重并限制数量。
+- 不合格输出不会写入文章表。
+
+### 8.5 SEO 辅助
+
+- 第一项必选关键词优先作为主关键词。
+- 识别教程、排障、指南、最佳实践或推荐等搜索意图。
+- 优化标题、Meta Description、开头回答、H2/H3、长尾问题和 FAQ。
+- 文章详情计算 100 分制 SEO 辅助分。
+- 评分只用于编辑检查，不替代事实审核。
+- 不允许关键词堆砌、虚构统计、客户、评分、案例、兼容性或许可证。
+
+## 9. 内容与版本
+
+### 9.1 文章状态
+
+```text
+DRAFT ──审核通过──> APPROVED ──至少一次成功发布──> PUBLISHED
+  └──审核驳回──> REJECTED ──再次审核通过──> APPROVED
 ```
 
-生成器执行以下 SEO 策略：
+- 三类来源生成成功后都进入 `DRAFT`。
+- `DRAFT` 和 `REJECTED` 可以编辑。
+- `APPROVED` 和 `PUBLISHED` 不能直接编辑，避免发布基线被静默修改。
+- 只有 `APPROVED` 或 `PUBLISHED` 可以继续发布。
 
-- 将第一项必选关键词作为主关键词；没有显式关键词时，从主题、网站标题或项目名称中确定主关键词。
-- 根据教程、问题排查、知识指南、最佳实践或网站推荐识别搜索意图。
-- `title` 作为 SEO 标题，要求准确、克制、主关键词尽量靠前，不使用标题党。
-- `summary` 同时作为 Meta Description，直接描述内容价值、目标读者和可获得的结果。
-- 正文不重复一级标题，在开头优先回答搜索问题，并自然前置主关键词。
-- 使用 H2/H3、短段落、列表、表格和必要的示例增强可扫描性。
-- 在长度允许时生成常见问题或 FAQ，覆盖具体问题型长尾关键词。
-- 关键词按主关键词、次级词、长尾问题词、场景词排序；禁止追求固定密度或关键词堆砌。
-- 中文和英文分别采用自然搜索表达，不将英文 SEO 词机械逐字翻译。
-- SEO 优化不得突破 3000 字符正文上限，不得牺牲事实准确性或虚构引用、统计与案例。
+### 9.2 编辑与并发
 
-服务端不直接信任 AI 输出，而是执行二次校验：
+- 编辑请求携带 `expectedVersion`。
+- 与当前版本不一致时返回 `ARTICLE_VERSION_CONFLICT`。
+- 每次保存同时更新当前文章和新增不可变版本。
+- 标题最长 500，摘要最长 2000，中英文正文各最长 20000。
+- 标签最多 15，关键词最多 30。
+- 可以从历史版本恢复内容；恢复同样创建新版本，不覆盖历史。
 
-- 标题、摘要、正文不能为空。
-- 正文长度必须在约束范围内。
-- 必选关键词必须出现。
-- 主关键词必须出现在标题、摘要或正文前 400 字符内。
-- 禁用关键词不得出现。
-- 必选章节必须形成 Markdown 二级标题。
-- 长文章至少包含两个 Markdown 二级标题。
-- 中文 SEO 标题不超过 80 字符，英文 SEO 标题不超过 100 字符。
-- 中文摘要自动收紧到 200 字符以内，英文摘要自动收紧到 320 字符以内。
-- 关键词去空、去重并限制数量。
-- 不符合规则的输出不会写入文章表。
+### 9.3 审核
 
-文章详情根据主关键词、标题长度、摘要长度、关键词前置、H2 层级、可扫描结构、FAQ 和可信链接计算 SEO 质量分，供审核人员在发布前检查。该分数是编辑辅助指标，不替代人工事实审核。
+- 只有 Admin 可以审核。
+- 驳回原因必填，最长 500。
+- 审核操作基于资源状态保证幂等。
+- 审核动作、操作者和驳回原因进入审计。
 
-成功生成的文章状态固定为 `DRAFT`，必须由 Admin 审核后才能发布。
+## 10. 持久化任务
 
-### 5.4 仓库提示词注入防护
-
-README、代码注释、构建文件和目录名称均属于不可信输入。
-
-系统提示词明确规定：
-
-- 仓库内容中的角色设定和操作指令无效。
-- 不得执行仓库内容要求的外部操作。
-- 不得虚构项目功能、性能、客户、兼容性或许可证。
-- 仓库内容仅作为事实资料放入显式边界中。
-
-该机制降低提示词注入风险，但不能代替人工审核。
-
-### 5.5 异步任务
-
-任务类型：
+### 10.1 任务类型
 
 - `IMPORT_PROJECT`
 - `GENERATE_ARTICLE`
+- `GENERATE_TOPIC_ARTICLE`
+- `GENERATE_WEBSITE_ARTICLE`
 - `PUBLISH_ARTICLE`
 
-任务状态：
+### 10.2 状态
 
 ```text
-PENDING → RUNNING → SUCCEEDED
-             └──→ RETRY_WAIT → RUNNING
-             └──→ FAILED
+PENDING ──领取──> RUNNING ──成功──> SUCCEEDED
+   │                 ├──临时故障──> RETRY_WAIT ──到期──> RUNNING
+   │                 └──永久失败/次数耗尽──> FAILED
+   └──领取前取消──> CANCELLED
 ```
 
-状态含义：
+任务保存进度百分比、短标签、详细说明、批次 ID、计划时间、租约、结果资源和有限错误。
 
-| 状态 | 含义 |
-|---|---|
-| PENDING | 已持久化，等待工作器领取 |
-| RUNNING | 已被某个工作器领取并持有租约 |
-| RETRY_WAIT | 临时故障，等待下一次计划执行时间 |
-| SUCCEEDED | 执行成功，`resultResourceId` 指向项目、文章或发布记录 |
-| FAILED | 永久失败、达到最大重试次数，或最后一次执行租约过期 |
+### 10.3 幂等与配额
 
-临时故障包括 Git 拉取失败和 AI 服务调用失败。业务参数错误、AI 输出不合格、项目状态错误等不会无限重试。
+- 幂等键格式为 8–128 位字母、数字、点、下划线、冒号或连字符。
+- 同租户同键同请求返回原任务或账号。
+- 同键不同请求返回 409。
+- 默认每租户最多 20 个活动任务。
+- 批量发布在同一配额检查中创建全部子任务，配额不足时整体拒绝。
+- 文章通过 `generation_job_id`、发布通过 `publication_job_id` 防止任务重放产生重复资源。
 
-### 5.6 幂等规则
+### 10.4 调度、取消与重试
 
-- 所有写接口要求 `Idempotency-Key`。
-- 格式为 8–128 位字母、数字、点、下划线、冒号或连字符。
-- 同一租户使用相同键和相同请求时，返回原任务。
-- 同一租户使用相同键提交不同请求时，返回 `409 IDEMPOTENCY_KEY_CONFLICT`。
-- 不同租户可以使用相同幂等键。
-- 文章表通过唯一 `generation_job_id` 防止任务崩溃重试产生重复草稿。
-- 发布表通过唯一 `publication_job_id` 防止同一任务重复创建发布记录。
-- 渠道账号创建也要求幂等键；审核通过和驳回是资源状态上的天然幂等操作。
+- 发布请求可以指定 UTC `scheduledAt`。
+- 过去超过一分钟的计划时间被拒绝，最远一年。
+- 到期前任务保持 `PENDING`，不会被工作器领取。
+- 只有未领取的 `PENDING` 或 `RETRY_WAIT` 可以取消。
+- Git、AI 和网站的明确临时故障可以指数退避重试。
+- 发布外部 API 默认不自动重试结果不确定的调用。
+- Editor/Admin 可以对 `FAILED` 发布创建新任务人工重试；原失败事实保留。
 
-### 5.7 租户任务配额
+### 10.5 租约恢复
 
-- 默认每个租户最多存在 20 个活跃任务。
-- 活跃状态包括 `PENDING`、`RUNNING` 和 `RETRY_WAIT`。
-- 配额检查与任务创建在串行化数据库事务中执行。
-- 达到上限时返回 HTTP 429 和 `TENANT_JOB_QUOTA_EXCEEDED`。
+- 默认租约 5 分钟。
+- 工作器崩溃后，其他实例可以领取过期任务。
+- 已达到最大尝试次数的过期任务进入 `FAILED`。
+- 完成更新必须匹配任务 ID、`RUNNING` 和当前 `lock_owner`。
 
-### 5.8 审计
+## 11. 渠道
 
-当前记录以下事件：
+### 11.1 API 渠道
 
-- `JOB_SUBMITTED`
-- `JOB_SUCCEEDED`
-- `JOB_RETRY_SCHEDULED`
-- `JOB_FAILED`
-- `PROJECT_IMPORTED`
-- `PROJECT_IMPORT_FAILED`
-- `ARTICLE_GENERATED`
-- `ARTICLE_VERSION_CREATED`
-- `ARTICLE_APPROVED`
-- `ARTICLE_REJECTED`
-- `CHANNEL_ACCOUNT_CREATED`
-- `CHANNEL_ACCOUNT_STATUS_CHANGED`
-- `CHANNEL_CREDENTIALS_ROTATED`
-- `ARTICLE_PUBLISHED`
-
-审计记录包含租户、操作者、动作、目标类型、目标 ID、有限业务详情和 UTC 时间。禁止记录访问令牌、密码、API Key 和完整仓库内容。
-
-### 5.9 文章审核
-
-文章状态流转：
-
-```text
-DRAFT → APPROVED → PUBLISHED
-  └──→ REJECTED → APPROVED
-```
-
-- 只有 Admin 可以审核通过或驳回文章。
-- Editor 不能绕过审核直接发布。
-- 驳回必须提供原因，原因进入审计详情，不修改文章正文。
-- 同一审核操作重复调用返回当前文章，不产生重复副作用。
-- 草稿或已驳回文章可以编辑标题、摘要、正文和关键词。
-- 编辑请求必须携带 `expectedVersion`；版本不一致返回 `409 ARTICLE_VERSION_CONFLICT`。
-- 每次编辑递增 `currentVersion`，并在 `article_versions` 中保存不可变快照。
-- 审核通过或已发布文章不能直接修改，避免发布内容被静默改写。
-
-### 5.10 渠道账号与凭据
-
-当前渠道及凭据字段：
-
-| 渠道 | 地址 | 必需凭据 |
-|---|---|---|
-| DEV | 固定 `https://dev.to` | `apiKey` |
-| WordPress | 租户配置的 HTTPS 站点 | `username`、`applicationPassword` |
-| Discourse | 租户配置的 HTTPS 站点 | `apiKey`、`apiUsername` |
-| GitHub Discussions | 固定 `https://api.github.com` | `token`、`repositoryId`、`categoryId` |
-| Twitter/X | 固定 `https://api.x.com` | `accessToken`、`refreshToken`、`clientId`、`clientSecret` |
-| Reddit | 固定 `https://oauth.reddit.com` | `accessToken`、`refreshToken`、`clientId`、`clientSecret`、`subreddit` |
-| Hashnode | 固定 `https://gql-beta.hashnode.com/` | `token`、`publicationId` |
-| Medium | 固定 `https://api.medium.com` | `token`、`authorId` |
-| Mastodon | 租户配置的 HTTPS 实例 | `accessToken` |
-| Ghost | 租户配置的 HTTPS 站点 | `adminApiKey`，格式为 `id:hexSecret` |
-
-账号创建规则：
-
-- 只有 Admin 可以创建渠道账号。
-- 请求必须携带 `Idempotency-Key`。
-- 凭据字段必须精确匹配渠道定义，不接受多余字段。
-- 凭据使用 AES-256-GCM 加密后落库，查询接口不返回密文或明文。
-- 凭据使用 HMAC-SHA256 指纹识别相同内容，指纹不能反推出原凭据。
-- DEV、GitHub、X、Reddit、Hashnode 和 Medium API 地址不可由租户覆盖。
-- WordPress、Discourse、Mastodon 和 Ghost 主机必须位于服务器允许列表，且 DNS 不得解析到私网地址。
-- Admin 可停用或重新启用账号；停用账号不能接受新的发布任务。
-- Admin 可在线轮换平台 Token/API Key。请求必须携带 `expectedVersion`，数据库使用版本条件更新拒绝并发覆盖。
-- Admin 可执行连接测试；最近一次成功或失败状态、说明和时间持久化保存。凭据轮换后旧验证结果自动清除，必须重新验证。
-- Twitter/X 和 Reddit 在实际发布前使用 Refresh Token 获取新的 Access Token；平台返回轮换后的 Refresh Token 时，系统通过账号版本条件更新重新加密保存。并发刷新发生冲突时优先使用数据库中已保存的新凭据。
-- Medium 官方 API 不再面向新用户签发 Integration Token；该适配器仅适用于已合法持有可用 Token 的现有账号。
-
-渠道申请与配置入口：
-
-| 渠道 | 申请与配置步骤 |
-|---|---|
-| DEV | 在 DEV 设置中创建 API Key，账号地址保持 `https://dev.to`，保存后执行连接测试。 |
-| WordPress | 在目标站点为专用发布用户创建 Application Password，将站点 HTTPS 根地址加入服务器允许列表。 |
-| Discourse | 由站点管理员创建受限 API Key 和 API Username，将论坛 HTTPS 根地址加入允许列表。 |
-| GitHub Discussions | 为目标仓库启用 Discussions，创建具备对应仓库权限的 Token，并通过 GraphQL 获取 Repository ID 与 Category ID。 |
-| Twitter/X | 在开发者后台创建项目与 OAuth 2.0 应用，配置回调地址和发帖权限，通过 Authorization Code + PKCE 获取 Access Token 与 Refresh Token，再填写 Client ID 和 Client Secret。 |
-| Reddit | 先按 Reddit Data API 流程申请访问，创建 Web 应用并完成用户授权，取得 Access Token、Refresh Token、Client ID、Client Secret，最后填写目标 Subreddit。 |
-| Hashnode | 创建 Personal Access Token，并取得目标 Publication ID；GraphQL 地址固定为 `https://gql-beta.hashnode.com/`。 |
-| Medium | 仅已有 Integration Token 的存量账号可配置；平台不再支持新的 API 接入申请。 |
-| Mastodon | 在目标实例注册应用并生成具备发布权限的 Access Token，将实例 HTTPS 地址加入允许列表。 |
-| Ghost | 在 Ghost Admin 创建 Custom Integration，复制 Admin API Key，并将站点 HTTPS 地址加入允许列表。 |
-
-申请规则和字段以各平台官方后台实际展示为准。平台未批准 API 权限前，不应通过 Cookie、验证码绕过或浏览器模拟登录替代。
-
-### 5.11 平台内容自适应与渠道发布
-
-平台以文章主稿为唯一可信内容源，在提交发布或进入人工发布工作区时生成渠道派生内容：
-
-- DEV、WordPress、Discourse、GitHub Discussions、Reddit、Hashnode、Medium、Ghost、CSDN、掘金、博客园、SegmentFault、V2EX 和开源中国使用 Markdown 长文。
-- 小红书和知乎使用去除 Markdown 标记的普通文本；小红书标题限制为 20 个 Unicode 字符并追加规范化话题标签。
-- Twitter/X 和 Mastodon 使用普通文本短帖，分别限制为 280 和 500 个 Unicode 字符。
-- 派生内容不会覆盖文章主稿；API 请求和人工发布预览使用同一适配服务。
-
-只有 `APPROVED` 或已经在其他渠道发布过的 `PUBLISHED` 文章可以提交 `PUBLISH_ARTICLE` 任务。
-
-提交前必须通过服务端发布预检：文章状态有效、账号启用、连接验证未失败、适配器存在、地址安全、凭据字段完整，并且国外渠道已有英文标题、摘要和正文。页面禁用未通过预检的账号，直接调用 POST 接口时服务端仍会重复校验。
-
-发布请求可以携带 UTC `scheduledAt`：留空立即进入队列，过去一分钟以上的时间被拒绝，最长可预约一年。只有 `PENDING` 或 `RETRY_WAIT` 且尚未被工作器领取的任务可以取消；`RUNNING`、成功、失败和已取消任务不能再次取消。
-
-发布结果保存：
-
-- 渠道类型和渠道账号。
-- 外部内容 ID 和公开 URL。
-- `PUBLISHING`、`PUBLISHED` 或 `FAILED` 状态。
-- 有限错误码和脱敏错误信息。
-- 可选的 HTTPS `canonicalUrl`。
-- 发布时间、创建时间和更新时间。
-
-外链处理规则：
-
-| 渠道 | `canonicalUrl` 行为 |
-|---|---|
-| DEV、Hashnode、Medium、Ghost | 写入渠道提供的 canonical/original URL 字段 |
-| WordPress、Discourse、GitHub Discussions、Reddit | 作为原文链接附加到正文 |
-| Twitter/X、Mastodon | 生成带原文链接的受长度控制短帖 |
-
-除停止新接入的 Medium 外，已启用渠道会在审核和预检通过后执行真实官方 API 发布，不创建浏览器自动化任务。由于这些外部 API 不统一支持幂等键，平台不会自动重试结果不确定的发布调用，以避免重复文章；管理员必须先核对渠道结果，再决定后续重放。提交任务的请求哈希包含 `canonicalUrl` 和 `scheduledAt`，同一幂等键不能静默替换外链或计划时间。
-
-发布中心按任务阶段拆分为“待发布、执行批次、发布记录、覆盖分析”：
-
-- 发布记录只展示真实 API/人工发布结果，不重复展示“已连接接口”和“人工发布平台”；这些信息由渠道管理单独维护。
-- 执行批次按同次多渠道提交聚合进度，存在活跃任务时每 5 秒自动同步，并支持取消尚未执行的单个渠道任务。
-- 覆盖分析按文章与渠道展示最新状态，未发布渠道明确标记为空缺。
-- 统一时间线展示发布方式、状态、账号或操作人、更新时间、结果外链和有限失败信息。
-- API 与人工历史事实分别保留，不因统一视图而覆盖或删除。
-- Viewer 可查看租户内发布状态，但任何页面和查询接口都不返回渠道凭据或人工发布正文快照。
-
-## 6. API 功能
-
-| 方法 | 路径 | 角色 | 功能 |
+| 渠道 | 新建状态 | 凭据 | 地址 |
 |---|---|---|---|
-| POST | `/api/v1/projects/imports` | Editor/Admin | 提交 Git 导入任务 |
-| GET | `/api/v1/projects/{projectId}` | Viewer/Editor/Admin | 查看租户内项目 |
-| POST | `/api/v1/projects/{projectId}/articles` | Editor/Admin | 提交文章生成任务 |
-| GET | `/api/v1/articles/{articleId}` | Viewer/Editor/Admin | 查看文章 |
-| PUT | `/api/v1/articles/{articleId}` | Editor/Admin | 编辑草稿并创建新版本 |
-| GET | `/api/v1/articles/{articleId}/versions` | Viewer/Editor/Admin | 查看不可变版本列表 |
-| POST | `/api/v1/articles/{articleId}/approve` | Admin | 审核通过文章 |
-| POST | `/api/v1/articles/{articleId}/reject` | Admin | 驳回文章 |
-| POST | `/api/v1/channel-accounts` | Admin | 创建加密渠道账号 |
-| GET | `/api/v1/channel-accounts` | Editor/Admin | 查看渠道账号元数据 |
-| GET | `/api/v1/channel-accounts/{accountId}` | Editor/Admin | 查看单个渠道账号元数据 |
-| PUT | `/api/v1/channel-accounts/{accountId}` | Admin | 修改账号名称或安全地址，要求 `expectedVersion` |
-| PATCH | `/api/v1/channel-accounts/{accountId}/status` | Admin | 启用或停用账号，要求 `expectedVersion` |
-| PUT | `/api/v1/channel-accounts/{accountId}/credentials` | Admin | 加密轮换凭据，要求 `expectedVersion` |
-| POST | `/api/v1/channel-accounts/{accountId}/verify` | Admin | 测试连接并保存验证状态 |
-| POST | `/api/v1/articles/{articleId}/publications` | Editor/Admin | 提交单渠道发布任务，可带 `scheduledAt` |
-| POST | `/api/v1/articles/{articleId}/publication-batches` | Editor/Admin | 提交多渠道发布批次，可带统一 `scheduledAt` |
-| GET | `/api/v1/publications?limit=50` | Viewer/Editor/Admin | 查看 API 与人工统一发布记录 |
-| GET | `/api/v1/publications/{publicationId}` | Viewer/Editor/Admin | 查看发布结果 |
-| GET | `/api/v1/jobs/{jobId}` | Viewer/Editor/Admin | 查询租户内任务 |
-| POST | `/api/v1/jobs/{jobId}/cancel` | Editor/Admin | 取消尚未执行或等待重试的任务 |
-| GET | `/actuator/health` | 匿名 | 健康检查 |
+| DEV | 可新建 | `apiKey` | 固定 `https://dev.to` |
+| WordPress | 可新建 | `username`、`applicationPassword` | 租户 HTTPS 站点 |
+| Discourse | 可新建 | `apiKey`、`apiUsername` | 租户 HTTPS 站点 |
+| GitHub Discussions | 可新建 | `token`、`repositoryId`、`categoryId` | 固定 GitHub API |
+| Twitter/X | 可新建 | `accessToken`、`refreshToken`、`clientId`、`clientSecret` | 固定 X API |
+| Reddit | 可新建 | X 的字段加 `subreddit` | 固定 Reddit API |
+| Hashnode | 可新建 | `token`、`publicationId` | 固定 GraphQL 地址 |
+| Medium | 停止新建 | `token`、`authorId` | 仅存量 Integration Token |
+| Mastodon | 可新建 | `accessToken` | 租户 HTTPS 实例 |
+| Ghost | 可新建 | `adminApiKey` | 租户 HTTPS 站点 |
 
-Git 导入、文章生成和发布任务成功返回 `202 Accepted`，并通过 `Location` 响应头给出任务查询地址；账号创建返回 `201 Created`，账号启停和凭据轮换返回 `200 OK`。
+因此当前是 9 个可新接入 API 渠道，加 1 个 Medium 存量适配器。
 
-## 7. 错误处理
+### 11.2 人工渠道
 
-业务错误响应包含：
+| 渠道 | 格式 | 最大内容字符 | 官方工作区 |
+|---|---|---:|---|
+| 小红书 | 普通文本 | 1000 | 有 |
+| CSDN | Markdown | 20000 | 有 |
+| 掘金 | Markdown | 20000 | 有 |
+| 知乎 | 普通文本 | 20000 | 有 |
+| 博客园 | Markdown | 20000 | 有 |
+| SegmentFault | Markdown | 20000 | 有 |
+| V2EX | Markdown | 10000 | 有 |
+| 开源中国 | Markdown | 20000 | 有 |
+| LinkedIn | 普通文本 | 3000 | 有 |
+| 微信公众号 | 普通文本 | 20000 | 有 |
+| 简书 | 普通文本 | 20000 | 有 |
+| 今日头条 | 普通文本 | 20000 | 有 |
+| B 站专栏 | 普通文本 | 20000 | 有 |
+| 51CTO 博客 | Markdown | 20000 | 有 |
+| 腾讯云开发者社区 | Markdown | 20000 | 有 |
+| 阿里云开发者社区 | Markdown | 20000 | 有 |
+| 华为云开发者社区 | Markdown | 20000 | 有 |
 
-- UTC 时间。
-- HTTP 状态码。
-- 稳定错误码。
-- 用户可理解的信息。
-- 请求路径。
-- Trace ID。
-- 字段校验错误列表。
+### 11.3 账号生命周期
 
-主要错误码：
+- 只有 Admin 可以创建 API 账号。
+- 创建请求必须有幂等键。
+- 凭据字段必须精确匹配渠道定义，不接受多余字段。
+- 凭据使用 AES-256-GCM 加密；HMAC-SHA256 指纹用于识别相同凭据。
+- API 和页面不返回凭据或指纹。
+- Admin 可以修改展示名称和安全地址、启停、轮换凭据和测试连接。
+- 修改和轮换使用 `expectedVersion` 防止并发覆盖。
+- 凭据轮换后清除旧连接验证结果。
+- X/Reddit 发布前自动刷新 Access Token；新令牌按新账号版本加密保存。
+- Medium 已有账号可以继续运行，但不能创建新账号。
 
-| 错误码 | HTTP | 场景 |
+### 11.4 地址安全
+
+- DEV、GitHub、X、Reddit、Hashnode、Medium 使用固定地址。
+- WordPress、Discourse、Mastodon、Ghost 使用租户地址。
+- 动态地址必须 HTTPS、无 UserInfo/Query/Fragment、主机在允许列表且 DNS 为公网地址。
+- 地址在创建、验证、预检和实际发布前重复校验。
+
+## 12. 发布
+
+### 12.1 内容适配
+
+平台以主稿为唯一可信内容源：
+
+- Markdown 长文渠道保留结构。
+- 普通文本渠道去除 Markdown 标记。
+- Twitter/X 和 Mastodon 生成 280/500 字符短帖。
+- 小红书标题限制 20 个 Unicode 字符，并生成规范化话题标签。
+- 派生内容不会覆盖主稿。
+- API Publisher 和人工工作区使用同一个 `PlatformContentAdapter`。
+
+### 12.2 发布预检
+
+创建 API 发布任务前同时检查：
+
+- 文章为 `APPROVED` 或 `PUBLISHED`。
+- 渠道账号属于当前租户且为 `ACTIVE`。
+- 最近一次连接验证不能是失败。
+- 渠道适配器存在且仍可运行。
+- 地址安全。
+- 凭据字段完整。
+- 国外渠道具有完整英文标题、摘要和正文。
+- `canonicalUrl` 合法。
+- `scheduledAt` 合法。
+
+页面禁用未通过预检的账号；直接调用 REST API 时服务端仍重新校验。
+
+### 12.3 canonical URL
+
+- 只接受最长 2048、不含 UserInfo 的 HTTPS URL。
+- DEV、Hashnode、Medium、Ghost 使用渠道原生 canonical/original 字段。
+- WordPress、Discourse、GitHub Discussions、Reddit 附加原文链接。
+- Twitter/X、Mastodon 在长度限制内附加链接。
+
+### 12.4 API 发布
+
+- 工作器创建 `PUBLISHING` 发布记录后再调用官方 API。
+- 成功保存外部 ID、URL、发布时间，状态改为 `PUBLISHED`。
+- 失败保存有限错误码和脱敏说明，状态改为 `FAILED`。
+- 文章至少一次发布成功后状态改为 `PUBLISHED`。
+- 外部结果不确定时不自动盲目重试，避免重复文章。
+
+### 12.5 人工发布
+
+1. Editor/Admin 进入文章对应渠道的人工工作区。
+2. 系统生成标题、正文和标签。
+3. 用户可以在工作区继续调整派生内容。
+4. 用户复制内容并打开官方创作入口。
+5. 用户在第三方平台登录、排版和发布。
+6. 回填 HTTPS 公开 URL。
+7. 服务端校验 URL 主机与渠道允许域名。
+8. 保存最终派生内容快照、操作者和发布时间。
+
+平台不保存第三方登录凭据，不执行浏览器自动化。
+
+### 12.6 统一发布记录
+
+- API 与人工发布事实分别存储。
+- 应用层合并为统一只读记录。
+- 记录包含文章、渠道、方法、状态、账号或操作人、外链、有限错误和时间。
+- 列表不返回渠道凭据或人工正文快照。
+- 发布矩阵按文章与渠道展示最新状态；历史仍保留在统一时间线。
+- 执行批次按 `batchId` 聚合同次多渠道任务。
+
+## 13. 页面
+
+| 页面 | 地址 | 角色 | 主要用途 |
+|---|---|---|---|
+| 登录 | `/login` | 匿名 | LOCAL 登录 |
+| 工作台 | `/` | 已登录 | 最近项目、内容、任务和发布概览 |
+| 内容工作台 | `/projects` | Viewer+ | Git、主题、网站三类内容入口 |
+| 项目详情 | `/projects/{projectId}` | Viewer+ | 项目事实和项目文章 |
+| 内容库 | `/content` | Viewer+ | 筛选、查看、编辑和审核内容 |
+| 文章详情 | `/articles/{articleId}` | Viewer+ | 主稿、SEO、版本、审核 |
+| 发布详情 | `/publishing/articles/{articleId}` | Viewer+ | 预检和选择渠道 |
+| 发布中心 | `/publishing` | Viewer+ | 队列、批次、记录和覆盖分析 |
+| 渠道管理 | `/channels` | Viewer+；写操作 Admin | API 账号和人工目录 |
+| 人工发布 | `/articles/{articleId}/manual/{channelType}` | Editor/Admin | 适配、复制、跳转和回填 |
+| 监控大屏 | `/monitoring` | Viewer+ | 业务与运行态势 |
+| 任务队列 | `/jobs` | Viewer+ | 搜索、筛选和查看任务 |
+| 任务详情 | `/jobs/{jobId}` | Viewer+ | 进度、取消和失败发布重试 |
+| 回收站 | `/recycle-bin` | Admin | 恢复误删文章与任务 |
+| AI 设置 | `/settings/ai` | Admin | 租户级 AI 服务 |
+| 修改密码 | `/change-password` | LOCAL 用户 | 强制或主动改密 |
+
+所有后台、登录和私有页面都使用 `noindex,nofollow`。
+
+## 14. 监控
+
+监控快照按当前租户统计：
+
+- 项目总数、窗口活动数和状态分布。
+- 文章总数、窗口活动数、状态和来源分布。
+- 任务总数、窗口活动数、总状态和窗口状态分布。
+- 发布总数、窗口活动数和状态分布。
+- 渠道账号总数和启停状态。
+- 已覆盖渠道数。
+- 每个渠道的总发布、成功和失败数量。
+
+监控用于运营和运行态势，不等同于基础设施指标告警。
+
+## 15. 回收站
+
+- Admin 可以软删除文章或终态任务。
+- 活动任务不能删除。
+- 文章仍有关联活动任务时不能删除。
+- 删除文章同时软删除与文章关联的任务和发布事实。
+- 删除生成任务时，如果存在由该任务生成的文章，则级联删除整条文章记录。
+- 恢复文章同时恢复关联任务和发布事实。
+- 回收站查询每类最多返回 100 条。
+- 当前没有永久清理接口。
+
+## 16. 身份与安全
+
+### 16.1 LOCAL
+
+- PostgreSQL 保存本地用户和角色。
+- 密码保存 BCrypt 哈希，强度 12。
+- 新密码 8–128 位，必须同时包含大写、小写、数字和特殊字符。
+- 禁止重复使用当前密码。
+- Session 采用固定攻击防护，默认最多一个并发会话。
+- Web 写操作启用 CSRF。
+
+### 16.2 JWT
+
+- Bearer Token 至少提供主体、租户和角色。
+- API 无状态。
+- Claim 名可以配置。
+
+### 16.3 DISABLED
+
+- 仅本地开发。
+- 使用服务器配置的默认租户和主体。
+- 生产禁止使用。
+
+## 17. 审计
+
+当前审计动作包括：
+
+- 任务提交、成功、退避、失败、取消和人工重试。
+- 项目导入成功或失败。
+- Git、主题、网站三类文章生成。
+- 文章版本创建、历史恢复、审核通过和驳回。
+- AI 设置更新。
+- 渠道账号创建、更新、启停、连接验证、人工轮换和自动刷新。
+- API 发布和人工发布。
+- 文章/任务软删除、级联删除和恢复。
+
+审计包含租户、主体、动作、目标、有限详情和 UTC 时间。禁止记录密码、Token、API Key、完整凭据、完整仓库内容或内部任务 Payload。
+
+## 18. REST API 业务清单
+
+当前 REST API 共 31 个业务操作：
+
+- 项目 3 个。
+- 文章与来源 11 个。
+- 渠道账号 7 个。
+- 任务 5 个。
+- 发布查询与链接校验 3 个。
+- Markdown 预览 1 个。
+- 监控 1 个。
+
+路径、字段、角色、响应和错误契约以 [API 参考](API_REFERENCE.md) 为准。
+
+## 19. 错误与用户反馈
+
+应用错误和参数校验错误包含 UTC 时间、HTTP 状态、稳定错误码、可理解说明、请求路径、Trace ID 和字段错误。认证失败、权限不足和强制改密由安全过滤器返回最小安全错误体，只包含状态、错误码和说明。
+
+用户界面必须处理：
+
+- 空列表和首次使用。
+- AI、渠道或工作器未启用。
+- 项目未就绪。
+- 加载和自动刷新。
+- 权限不足和强制改密。
+- 表单校验、版本冲突和重复提交。
+- 外部服务超时、地址拒绝和响应不合格。
+- 任务取消、失败和人工重试。
+- 长标题、长正文、长错误信息和移动端布局。
+
+错误提示应说明原因和下一步，不显示堆栈、密钥、内部路径或 SQL。
+
+## 20. 数据分级
+
+| 数据 | 级别 | 处理 |
 |---|---:|---|
-| REQUEST_VALIDATION_FAILED | 400 | 请求字段不合法 |
-| REQUEST_HEADER_MISSING | 400 | 缺少幂等请求头 |
-| IDEMPOTENCY_KEY_INVALID | 400 | 幂等键格式错误 |
-| AUTHENTICATION_REQUIRED | 401 | 未登录或未携带有效 JWT |
-| ACCESS_DENIED | 403 | 角色权限不足 |
-| PROJECT_NOT_FOUND / JOB_NOT_FOUND | 404 | 当前租户内资源不存在 |
-| IDEMPOTENCY_KEY_CONFLICT | 409 | 幂等键对应不同请求 |
-| PROJECT_NOT_READY | 409 | 项目未完成分析 |
-| ARTICLE_NOT_APPROVED | 409 | 文章未通过审核 |
-| ARTICLE_STATE_CONFLICT | 409 | 审核操作与当前状态冲突 |
-| ARTICLE_VERSION_CONFLICT | 409 | 编辑所基于的文章版本已过期 |
-| CHANNEL_ACCOUNT_VERSION_CONFLICT | 409 | 渠道账号版本已被其他请求修改 |
-| CHANNEL_ACCOUNT_DISABLED | 409 | 渠道账号已停用 |
-| CHANNEL_CONNECTION_NOT_READY | 409 | 渠道最近一次连接验证失败 |
-| CHANNEL_CREDENTIALS_INVALID | 400 | 渠道凭据字段不完整 |
-| CHANNELS_DISABLED | 409 | 渠道发布功能未启用 |
-| JOB_NOT_CANCELLABLE | 409 | 任务已执行、已结束或已被工作器领取 |
-| TENANT_JOB_QUOTA_EXCEEDED | 429 | 活跃任务达到上限 |
-| GIT_URL_REJECTED | 422 | Git 地址违反安全规则 |
-| AI_OUTPUT_REJECTED | 422 | AI 输出未满足内容策略 |
-| CHANNEL_ENDPOINT_REJECTED | 422 | 渠道地址违反安全规则 |
-| CANONICAL_URL_REJECTED | 422 | 外链不是合规 HTTPS URL |
-| SCHEDULED_AT_INVALID | 422 | 计划发布时间无效或超过一年 |
-| ARTICLE_TRANSLATION_MISSING | 422 | 国外渠道所需英文稿不完整 |
-| CHANNEL_RESPONSE_REJECTED | 502 | 渠道官方 API 拒绝请求 |
-| CHANNEL_AUTH_REFRESH_FAILED | 502 | OAuth 授权刷新失败 |
+| 公开项目和公开外链 | L1 | 防篡改和来源追踪 |
+| 项目配置、任务、发布状态 | L2 | 认证、租户隔离和审计 |
+| 未发布内容、运营策略、网站快照 | L3 | RBAC、备份、限制访问 |
+| 密码、AI API Key、渠道 Token、OIDC 秘密 | L4 | 哈希或 AES-GCM、禁止回显和日志输出 |
 
-## 8. 数据分级
+## 21. 验收标准
 
-| 数据 | 建议级别 | 处理要求 |
-|---|---:|---|
-| 已公开项目资料 | L1 | 防篡改、版本追踪 |
-| 项目配置和任务状态 | L2 | 租户隔离、身份认证 |
-| 未发布文章和运营策略 | L3 | 权限控制、审计、备份 |
-| AI API Key、OIDC 配置、渠道 Token | L4 | AES-GCM 或密钥系统、禁止 API/日志输出、定期轮换 |
+### 21.1 内容来源
 
-### 5.12 人工跳转发布
+- 安全 Git 地址可以创建导入任务，不安全地址在入队前被拒绝。
+- 项目快照保存 Commit、分支、README、Manifest、目录树、语言和 License。
+- 主题请求保存主题、受众、类型、知识级别和来源关键词。
+- 网站请求拒绝危险地址、重定向、过大响应和过短内容。
+- 三类来源都生成统一文章，并能在内容库按来源识别。
 
-无稳定官方发布 API 的平台使用受控人工流程：生成适配内容、复制标题和正文、跳转官方登录或创作页、发布后回填文章 URL。平台不保存第三方用户名、密码、Cookie 或验证码，不执行模拟登录。
+### 21.2 AI 与内容
 
-人工发布成功后保存渠道类型、内容格式、最终标题、最终正文、外部 URL、操作人和发布时间。外部 URL 必须使用 HTTPS，且主机名必须与所选平台的允许域名匹配。
+- 租户 AI API Key 只以认证密文保存且不回显。
+- AI 输出违反长度、必选词、禁用词、章节或标题摘要规则时不写入文章。
+- 编辑必须匹配 `expectedVersion` 并创建新版本。
+- 历史版本恢复不覆盖原版本。
+- Editor 不能审核，未审核文章不能发布。
+- 国外渠道缺少英文稿时预检失败。
 
-## 9. 渠道范围与扩展原则
+### 21.3 任务
 
-已接入 DEV、WordPress、Discourse、GitHub Discussions、Twitter/X、Reddit、Hashnode、Medium、Mastodon 和 Ghost 的官方 API。小红书、CSDN、掘金、知乎、博客园、SegmentFault、V2EX 和开源中国通过人工跳转发布工作区接入。
-
-接入原则：
-
-- 有官方 API 的渠道使用 OAuth/API。
-- 无稳定发布接口的渠道生成草稿和人工发布任务。
-- 不保存浏览器 Cookie，不绕过验证码，不模拟未授权登录。
-- 每个渠道声明文章、短帖、图片、外链、修改、删除和数据回收能力。
-
-## 10. 当前版本验收标准
-
-- Git 地址安全校验有效。
-- V1–V18 数据库迁移可从空库连续执行。
-- 写接口返回 202、任务 ID 和 Location。
-- 相同幂等请求返回同一任务。
-- 幂等冲突和租户配额返回稳定错误码。
+- V1–V18 可从空库连续执行。
+- 异步写接口返回任务和正确状态码。
+- 同幂等键同请求返回原结果；不同请求返回冲突。
+- 不同租户可以使用相同幂等键。
 - 两个工作器不能同时成功领取同一任务。
-- 临时故障进入退避重试，耗尽次数进入失败。
-- 过期的最后一次执行不会永久停留在 RUNNING。
-- 不同租户无法读取对方项目和任务。
+- 临时故障退避，次数耗尽后失败。
+- 过期租约可以恢复。
+- 计划时间到达前任务不能被领取。
+- 未领取任务可取消，RUNNING 和终态不可取消。
+- 失败发布重试创建新任务并保留原记录。
+
+### 21.4 渠道与发布
+
+- API 查询不返回渠道凭据或指纹。
+- 凭据轮换拒绝过期账号版本。
+- 自托管地址通过 HTTPS、允许列表和公网 DNS 校验。
+- Medium 不能新建账号，已有账号仍可运行。
+- X/Reddit 刷新后的凭据以新版本加密保存。
+- API 发布成功保存外部 ID、URL、时间和审计。
+- 人工发布外链必须匹配渠道域名。
+- 统一记录不暴露人工正文快照。
+- 批量发布最多 20 个去重账号，并生成可聚合批次。
+
+### 21.5 权限、租户与恢复
+
 - Viewer 不能调用写接口。
-- AI 输出违反关键词、章节或长度要求时不得保存文章。
-- 文章编辑必须创建新版本，并拒绝过期 `expectedVersion`。
-- 未审核文章不能提交发布任务，Editor 不能执行审核。
-- 渠道凭据不能通过 API 返回，数据库只保存带随机 IV 的认证密文。
-- 凭据轮换后的数据库密文不得包含新凭据明文，并拒绝过期账号版本覆盖。
-- 自托管渠道地址必须通过 HTTPS、主机允许列表和公网地址校验。
-- 非 HTTPS `canonicalUrl` 必须在任务创建前被拒绝。
-- 发布成功后必须保存外部内容 ID、URL 和审计记录。
-- 国外渠道缺少英文稿、账号停用、连接验证失败或凭据字段不完整时，发布预检必须阻止提交。
-- 计划任务在 `scheduledAt` 到达前不能被工作器领取。
-- `PENDING`、`RETRY_WAIT` 任务可取消，`RUNNING` 任务取消必须失败且不得改变原状态。
-- X/Reddit 刷新 Access Token 后，新凭据必须以账号新版本重新加密保存。
+- Editor 不能审核、管理渠道、AI 设置或回收站。
+- 不同租户不能读取彼此资源或统计。
+- 强制改密用户不能访问业务功能。
+- 活动任务和有关联活动任务的文章不能删除。
+- 恢复文章时关联任务和发布事实同步恢复。
+
+### 21.6 运维
+
+- `mvn clean verify` 可以作为完整验证入口。
+- 应用启动时 Flyway 和 Hibernate Schema 校验通过。
+- health、liveness、readiness 可用于探针。
+- 生产部署有数据库、环境文件、主密钥和制品备份。
+- 回滚前检查 Schema 兼容和正在执行的外部发布。
+
+## 22. 当前边界与后续计划
+
+按当前代码尚未完成：
+
+1. 独立审核历史和审核意见查询。
+2. Prompt Template、模型调用成本和生成参数版本记录。
+3. PostgreSQL Testcontainers 和真实锁语义验证。
+4. 可配置工作器并发、死信处理和批量管理员重放。
+5. 主密钥版本化迁移和 OAuth 到期提醒。
+6. UTM、发布日历、效果数据回收和分析。
+7. 自动生成并校验 OpenAPI 契约。
+
+## 23. 文档维护
+
+- 业务能力、角色、状态、字段、页面、渠道、验收或边界变化时更新本文档。
+- Controller/DTO 变化同时更新 `API_REFERENCE.md`。
+- 组件、数据结构、安全、配置或测试变化同时更新 `TECHNICAL_DEVELOPMENT.md`。
+- 部署、环境变量、迁移或回滚变化同时更新 `OPERATIONS.md`。
+- README 始终保持当前能力、启动入口和文档索引准确。
